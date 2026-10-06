@@ -11,6 +11,7 @@ function fixture(readyState = 'complete') {
         constructor() { this.dataset = {}; this.children = []; this.props = new Map(); this.style = {setProperty:(k,v)=>this.props.set(k,v),removeProperty:k=>this.props.delete(k)}; const classes = new Set(); this.classList = {toggle:(c,on)=>on?classes.add(c):classes.delete(c),remove:(...cs)=>cs.forEach(c=>classes.delete(c))}; }
         append(...children) { for (const child of children) { this.children.push(child); child.parentElement = this; if (child.id) nodes.set(child.id, child); } }
         remove() { if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(x=>x!==this); nodes.delete(this.id); }
+        setAttribute(k,v) { (this.attributes ||= {})[k] = v; }
         addEventListener(k,fn) { (this.listeners ||= {})[k] = fn; }
         querySelector(selector) { return selector.startsWith('#') ? nodes.get(selector.slice(1)) || null : null; }
         querySelectorAll() { return []; }

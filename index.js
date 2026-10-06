@@ -26,7 +26,7 @@ export function dispose() {
 function startManager() {
 
   'use strict';
-  /* 梨梨 · 头像管理器 插件 v1.0.0 — 白川；头像、头像框、颜色与背景管理。 */
+  /* 梨梨 · 头像管理器 插件 v1.0.1 — 白川；头像、头像框、颜色与背景管理。 */
   const host = window;
   const doc = host.document;
   const key = '__liliSequenceAvatarV7';
@@ -987,13 +987,27 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
     if (!container || doc.getElementById('lili-avatar-extension-settings')) return;
     const section = doc.createElement('div');
     section.id = 'lili-avatar-extension-settings';
-    const heading = doc.createElement('h4'); heading.textContent = '梨梨 · 头像管理器';
+    section.className = 'extension_container';
+    const drawer = doc.createElement('div'); drawer.className = 'inline-drawer';
+    const header = doc.createElement('div');
+    header.className = 'inline-drawer-toggle inline-drawer-header';
+    header.tabIndex = 0; header.setAttribute('role', 'button');
+    const heading = doc.createElement('b'); heading.textContent = '梨梨 · 头像管理器';
+    const icon = doc.createElement('div');
+    icon.className = 'inline-drawer-icon fa-solid fa-circle-chevron-down down';
+    header.append(heading, icon);
+    // Clicks use SillyTavern's delegated native drawer handler and theme styles.
+    header.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); header.click(); }
+    });
+    const content = doc.createElement('div'); content.className = 'inline-drawer-content';
     const button = doc.createElement('button'); button.type = 'button';
     button.className = 'menu_button interactable'; button.textContent = '♡ 打开头像与背景管理';
     button.addEventListener('click', () => openManager(null));
-    const note = doc.createElement('small');
-    note.textContent = '头像、头像框、背景、气泡与正文样式 · v1.0.0';
-    section.append(heading, button, note); container.append(section);
+    const note = doc.createElement('div'); note.className = 'opacity50p';
+    note.textContent = '头像、头像框、背景、气泡与正文样式 · v1.0.1';
+    content.append(button, note); drawer.append(header, content);
+    section.append(drawer); container.append(section);
   }
   libLoad().then(() => dead ? undefined : migrate()).then(() => { if (!dead) paintAll(); }).catch(() => {});
 
