@@ -1,0 +1,5 @@
+/* Palette follows the active SillyTavern theme. Main manager styles are scoped in index.js. */
+#lili-avatar-extension-settings { display:flex; flex-direction:column; gap:8px; margin:10px 0; padding:12px; border:1px solid var(--SmartThemeBorderColor, #888); border-radius:8px; color:var(--SmartThemeBodyColor, inherit); }
+#lili-avatar-extension-settings h4 { margin:0; }
+#lili-avatar-extension-settings button { max-width:100%; min-height:44px; }
+#lili-avatar-extension-settings small { opacity:.8; }
