@@ -18,26 +18,26 @@ function fixture(readyState = 'complete') {
     }
     const root = new Element(), head = new Element(), body = new Element();
     nodes.set('chat', new Element()); nodes.set('extensionsMenu', new Element()); nodes.set('extensions_settings2', new Element());
-    const document = {readyState,documentElement:root,head,body,createElement:()=>new Element(),querySelector:s=>s==='#chat'?nodes.get('chat'):null,querySelectorAll:()=>[],getElementById:id=>nodes.get(id)||null,addEventListener:(k,fn)=>add(events,k,fn),removeEventListener:(k,fn)=>events.get(k)?.delete(fn)};
+    const document = {styleSheets: [],readyState,documentElement:root,head,body,createElement:()=>new Element(),querySelector:s=>s==='#chat'?nodes.get('chat'):null,querySelectorAll:()=>[],getElementById:id=>nodes.get(id)||null,addEventListener:(k,fn)=>add(events,k,fn),removeEventListener:(k,fn)=>events.get(k)?.delete(fn)};
     const window = {document,localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},indexedDB:{open(){throw Error('Unavailable test storage');}},getComputedStyle:()=>({getPropertyValue:()=>''}),matchMedia:()=>({matches:false,addEventListener(){},removeEventListener(){}}),MutationObserver:class{observe(){observers++;}disconnect(){observers--;}},URL,location:{href:'http://localhost/'},setTimeout,clearTimeout,addEventListener:(k,fn)=>add(hostEvents,k,fn),removeEventListener:(k,fn)=>hostEvents.get(k)?.delete(fn)};
     const context=vm.createContext({window,document,URL,console});
     vm.runInContext(source, context);
     return {context,window,document,events,hostEvents,nodes,head,storage,get observers(){return observers;}};
 }
 test('standalone startup is idempotent and removes its UI/listeners on dispose',async()=>{
-    const f=fixture(); assert.equal(f.observers,1); assert.equal(f.head.children.length,2);
+    const f=fixture(); assert.equal(f.observers,2); assert.equal(f.head.children.length,4);
     assert.ok(f.nodes.get('ll-avatar-manager'));assert.ok(f.nodes.get('lili-avatar-extension-settings'));
-    f.context.init(); assert.equal(f.observers,1); assert.equal(f.head.children.length,2);
+    f.context.init(); assert.equal(f.observers,2); assert.equal(f.head.children.length,4);
     await new Promise(r=>setImmediate(r));
     f.context.dispose();assert.equal(f.observers,0);assert.equal(f.head.children.length,0);
     assert.equal(f.window.__liliSequenceAvatarV7,undefined);assert.equal(f.nodes.has('lili-avatar-extension-settings'),false);
     assert.equal(f.hostEvents.get('pagehide').size,0);assert.equal(f.hostEvents.get('resize').size,0);
-    f.context.init();assert.equal(f.observers,1);f.context.dispose();
+    f.context.init();assert.equal(f.observers,2);f.context.dispose();
 });
 test('startup waits for DOM and survives a cached pagehide',()=>{
     const f=fixture('loading');assert.equal(f.observers,0);f.context.init();assert.equal(f.events.get('DOMContentLoaded').size,1);
-    f.document.readyState='complete';for(const fn of f.events.get('DOMContentLoaded'))fn();assert.equal(f.observers,1);
-    for(const fn of f.hostEvents.get('pagehide'))fn({persisted:true});assert.equal(f.observers,1);
+    f.document.readyState='complete';for(const fn of f.events.get('DOMContentLoaded'))fn();assert.equal(f.observers,2);
+    for(const fn of f.hostEvents.get('pagehide'))fn({persisted:true});assert.equal(f.observers,2);
     f.context.dispose();
 });
 test('install package preserves script storage keys and has no helper dependency',()=>{

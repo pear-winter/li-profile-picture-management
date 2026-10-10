@@ -26,7 +26,7 @@ export function dispose() {
 function startManager() {
 
   'use strict';
-  /* 梨梨 · 头像管理器 插件 v1.0.1 — 白川；头像、头像框、颜色与背景管理。 */
+  /* 梨梨 · 头像管理器 插件 v1.1.0 — 白川；头像、头像框、颜色与背景管理。 */
   const host = window;
   const doc = host.document;
   const key = '__liliSequenceAvatarV7';
@@ -90,6 +90,7 @@ function startManager() {
     avatar.style.setProperty('--ll-av-glow', light ? 'rgba(0,0,0,.45)' : 'rgba(255,255,255,.6)');
   }
   function paintInk(avatar) {
+    if (!set.appearance?.showColor) { delete avatar.dataset.llInk; delete avatar.dataset.llInkSig; paintCustom(avatar, ''); return; }
     const v = inkOf(avatar), custom = isHex(v);
     const tag = custom ? 'custom' : v;
     if (avatar.dataset.llInkSig === v) return; avatar.dataset.llInkSig = v;
@@ -186,6 +187,7 @@ function startManager() {
     for (const k of ['avatar', 'bg', 'frame']) for (const [key, v] of Object.entries(set[k])) {
       const id = typeof v === 'string' ? v : v?.id; if (ids.includes(id)) delete set[k][key];
     }
+    for (const [theme, id] of Object.entries(set.themeCovers || {})) if (ids.includes(id)) delete set.themeCovers[theme];
     if (ids.includes(set.globalBg?.id)) delete set.globalBg;
     if (ids.includes(set.entry?.iconId)) { delete set.entry.iconId; set.entry.mode = 'text'; }
     saveSet(); paintAll();
@@ -256,6 +258,7 @@ function startManager() {
   }
   function paintFrame(avatar) {
     const w = avatar.parentElement; if (!w) return;
+    if (!set.appearance?.showFrame) { paintOverlay(avatar, {}, null); ['--ll-ring','--ll-ring-mask','--ll-ring-color','--ll-ring-scale','--ll-ring-dx','--ll-ring-dy'].forEach(p => w.style.removeProperty(p)); delete w.dataset.llFrameSig; return; }
     const key = keyOf(avatar), r = set.frame[key] || set.frame['*'] || {}, it = r.id && r.id !== 'auto' ? byId(r.id) : null;
     if (!isSequence()) { paintOverlay(avatar, r, it); return; }     // 其他美化：直接盖在头像上
     if (avatar.querySelector(':scope > .ll-frame-over')) { paintOverlay(avatar, r, null); }
@@ -286,11 +289,19 @@ function startManager() {
   function paintBubbles() {
     const b = set.bubbles;
     root.classList.toggle('ll-custom-bubbles', !!b?.enabled);
-    if (!b?.enabled) { ['--ll-bubble-opacity','--ll-bubble-blur','--ll-bubble-color'].forEach(p => root.style.removeProperty(p)); return; }
+    if (!b?.enabled) { ['--ll-bubble-opacity','--ll-bubble-blur','--ll-bubble-color','--ll-bubble-brightness','--ll-bubble-paper','--ll-bubble-fill'].forEach(p => root.style.removeProperty(p)); return; }
     const opacity = Math.min(100, Math.max(0, Number(b.opacity) || 0));
     const blur = Math.min(40, Math.max(0, Number(b.blur) || 0));
     root.style.setProperty('--ll-bubble-opacity', opacity + '%');
-    root.style.setProperty('--ll-bubble-blur', blur + 'px');
+    root.style.setProperty('--ll-bubble-blur', (b.blurEnabled === false ? 0 : blur) + 'px');
+    const brightness = Math.min(180, Math.max(20, Number(b.brightness ?? 100)));
+    root.style.setProperty('--ll-bubble-brightness', brightness + '%');
+    const base = isHex(b.color) ? b.color : 'var(--lb-paper,var(--ll-paper,var(--SmartThemeBlurTintColor,#ffffff)))';
+    const fill = brightness <= 100 ? 'color-mix(in srgb,' + base + ' ' + brightness + '%,#000)' : 'color-mix(in srgb,' + base + ' ' + (200 - brightness) + '%,#fff)';
+    root.style.setProperty('--ll-bubble-fill', fill);
+    const paper = validColor(b.paperColor) ? b.paperColor : '#847765';
+    const amount = Math.min(35, Math.max(0, Number(b.paperStrength ?? 12)));
+    root.style.setProperty('--ll-bubble-paper', b.paper ? 'radial-gradient(ellipse at 20% 30%,color-mix(in srgb,' + paper + ' ' + amount + '%,transparent) 0 0.6px,transparent 1px),radial-gradient(ellipse at 70% 60%,color-mix(in srgb,' + paper + ' ' + amount + '%,transparent) 0 0.5px,transparent 1.1px)' : 'none');
     if (isHex(b.color)) root.style.setProperty('--ll-bubble-color', b.color); else root.style.removeProperty('--ll-bubble-color');
   }
   function paintText() {
@@ -322,6 +333,238 @@ function startManager() {
   }
   function paintEntries() { doc.querySelectorAll('.ll-avatar-entry').forEach(paintEntry); }
 
+  /* Theme profiles reference SillyTavern's native theme list; never overwrite the saved theme. */
+  const themeStyle = doc.createElement('style'); themeStyle.id = 'll-theme-overrides';
+  doc.head.append(themeStyle);
+  const extrasStyle = doc.createElement('style'); extrasStyle.id = 'll-manager-extras';
+  doc.head.append(extrasStyle);
+  set.appearance ||= { opacity: 100, blur: 0, showFrame: false, showColor: false };
+  set.themeProfiles ||= {}; set.charThemes ||= {}; set.themeCovers ||= {};
+  const themeName = () => doc.querySelector('#themes')?.value || '__current__';
+  const profile = () => set.themeProfiles[themeName()] ||= { colors: {}, text: {}, exclude: 'pre, code' };
+  const currentCharacter = () => { const c = host.SillyTavern?.getContext?.(); return c?.groupId ? null : c?.characters?.[c?.characterId]; };
+  const validColor = value => typeof value === 'string' && !/[;{}]|\/\*|var\(|url\(/i.test(value) && !!host.CSS?.supports('color', value.trim());
+  const clamp = (n, min, max, fallback = min) => Number.isFinite(+n) ? Math.max(min, Math.min(max, +n)) : fallback;
+  let themeChangeTimer = 0, bindingTimer = 0, bindingBusy = false, lastCharacter = null;
+  let themeReady = false, lastThemeSignature = '', themeObserver = null;
+  const excludedStyles = new Map();
+  const colorProperties = ['color','background-color','border-top-color','border-right-color','border-bottom-color','border-left-color','text-decoration-color','text-shadow','box-shadow','fill','stroke','background-image'];
+  function restoreExcluded() {
+    for (const [node, values] of excludedStyles) for (const [prop, [value, priority]] of Object.entries(values)) {
+      value ? node.style.setProperty(prop, value, priority) : node.style.removeProperty(prop);
+    }
+    excludedStyles.clear();
+  }
+  function exclusionNodes(p) {
+    if (!p.exclude?.trim()) return [];
+    try {
+      const nodes = new Set();
+      for (const node of doc.querySelectorAll(p.exclude)) { nodes.add(node); node.querySelectorAll('*').forEach(child => nodes.add(child)); }
+      return [...nodes].filter(n => !n.closest('.ll-mgr') && !/^(STYLE|SCRIPT|LINK|META|HEAD)$/.test(n.tagName));
+    }
+    catch (_) { return []; }
+  }
+  /* Tokenize colors without touching URLs, quoted strings or comments. CSSOM preserves nested conditions. */
+  function colorTokens(value) {
+    const out = [];
+    const re = /--[\w-]+|url\((?:[^()"']|"[^"]*"|'[^']*')*\)|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\/\*[\s\S]*?\*\/|#[\da-f]{3,8}\b|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\((?:[^()]|\([^()]*\))*\)|\b[a-z]+\b/gi;
+    for (const m of value.matchAll(re)) {
+      if (/^(?:--|url\(|["']|\/\*)/i.test(m[0]) || /^(?:inherit|initial|unset|revert|currentcolor|transparent)$/i.test(m[0])) continue;
+      if (validColor(m[0])) out.push({ value: m[0], index: m.index });
+    }
+    return out;
+  }
+  const normalizedColors = new Map();
+  function colorKey(value) {
+    const raw = value.toLowerCase();
+    if (!normalizedColors.has(raw)) { const probe = doc.createElement('span'); probe.style.color = value; normalizedColors.set(raw, probe.style.color || raw); }
+    return normalizedColors.get(raw);
+  }
+  function replaceColors(value, colors) {
+    let result = value;
+    for (const token of colorTokens(value).reverse()) {
+      const next = colors[colorKey(token.value)];
+      if (validColor(next)) result = result.slice(0, token.index) + next + result.slice(token.index + token.value.length);
+    }
+    return result;
+  }
+  function sourceSheets() {
+    const custom = doc.querySelector('#custom-style');
+    // Custom CSS is the user's theme. Other readable sheets can be explicitly included.
+    return [...doc.styleSheets].filter(s => s.ownerNode !== themeStyle && s.ownerNode !== extrasStyle && s.ownerNode !== panelCss && s.ownerNode !== guard &&
+      (profile().allSheets || s.ownerNode === custom || s.ownerNode?.id === 'customCSS' || /custom.?style|theme/i.test(s.ownerNode?.id || '')));
+  }
+  function eachRule(rules, visit) {
+    for (const rule of rules) {
+      if (rule.style && (rule.selectorText || rule.keyText)) visit(rule);
+      if (rule.cssRules) eachRule(rule.cssRules, visit);
+    }
+  }
+  function detectColors() {
+    const found = new Map(); let blocked = 0;
+    for (const sheet of sourceSheets()) try {
+      eachRule(sheet.cssRules, rule => {
+        for (const prop of rule.style) for (const token of colorTokens(rule.style.getPropertyValue(prop))) {
+          const key = colorKey(token.value);
+          if (!found.has(key)) found.set(key, { value: token.value, uses: new Set() });
+          found.get(key).uses.add(prop.startsWith('--') ? prop : prop + ' · ' + rule.selectorText);
+        }
+      });
+    } catch (_) { blocked++; }
+    return { found, blocked };
+  }
+  function rewrittenRules(rules, colors) {
+    let css = '';
+    for (const rule of rules) {
+      if (rule.type === 7) {
+        let changed = false, frames = '';
+        for (const frame of rule.cssRules) {
+          let declarations = '';
+          for (const prop of frame.style) { const old = frame.style.getPropertyValue(prop), next = replaceColors(old, colors); changed ||= old !== next; declarations += prop + ':' + next + ';'; }
+          frames += frame.keyText + '{' + declarations + '}';
+        }
+        if (changed) css += rule.cssText.slice(0, rule.cssText.indexOf('{') + 1) + frames + '}\n';
+        continue;
+      }
+      if (rule.style && (rule.selectorText || rule.keyText) && !/\.ll-mgr|ll-theme-|ll-manager-/.test(rule.selectorText)) {
+        let declarations = '';
+        for (const prop of rule.style) {
+          const old = rule.style.getPropertyValue(prop), value = replaceColors(old, colors);
+          if (value !== old) declarations += prop + ':' + value + (rule.keyText ? ';' : '!important;');
+        }
+        if (declarations) css += (rule.selectorText || rule.keyText) + '{' + declarations + '}\n';
+      } else if (rule.cssRules) {
+        const inner = rewrittenRules(rule.cssRules, colors);
+        if (inner) css += rule.cssText.slice(0, rule.cssText.indexOf('{') + 1) + inner + '}\n';
+      }
+    }
+    return css;
+  }
+  const textKinds = [
+    ['body','正文',''], ['italic','斜体','em,i'], ['underline','下划线','u'],
+    ['quote','引用 / 对话','q,blockquote,.quote'], ['bold','加粗','strong,b'],
+    ['link','链接','a'], ['code','代码','code,pre'], ['heading','标题','h1,h2,h3,h4,h5,h6'],
+  ];
+  const nativeColors = [
+    ['主要文本','--SmartThemeBodyColor'], ['斜体文本','--SmartThemeEmColor'], ['下划线文本','--SmartThemeUnderlineColor'],
+    ['引用文本','--SmartThemeQuoteColor'], ['阴影','--SmartThemeShadowColor'], ['聊天背景','--SmartThemeChatTintColor'],
+    ['UI 背景','--SmartThemeBlurTintColor'], ['UI 边框','--SmartThemeBorderColor'],
+    ['用户消息背景','--SmartThemeUserMesBlurTintColor'], ['AI 消息背景','--SmartThemeBotMesBlurTintColor'],
+  ];
+  function paintTheme() {
+    if (!themeReady || dead) return;
+    restoreExcluded(); themeStyle.textContent = '';
+    const p = profile();
+    const excluded = exclusionNodes(p).map(n => {
+      const computed = host.getComputedStyle(n), saved = {}, values = {};
+      for (const prop of colorProperties) { saved[prop] = [n.style.getPropertyValue(prop), n.style.getPropertyPriority(prop)]; values[prop] = computed.getPropertyValue(prop); }
+      return { n, saved, values };
+    });
+    let css = '';
+    for (const sheet of sourceSheets()) try { css += rewrittenRules(sheet.cssRules, p.colors || {}); } catch (_) {}
+    for (const [, variable] of nativeColors) if (validColor(p.variables?.[variable])) css += ':root:root{' + variable + ':' + p.variables[variable] + '!important;}';
+    for (const [kind,, tags] of textKinds) {
+      const color = p.text?.[kind]; if (!validColor(color)) continue;
+      const selector = tags ? tags.split(',').map(t => '#chat .mes .mes_text ' + t).join(',') : '#chat .mes .mes_text';
+      css += selector + '{color:' + color + '!important;}';
+      // Plain paragraphs and spans that a theme colors directly should also follow body color.
+      if (kind === 'body') css += '#chat .mes .mes_text :is(p,span,div,li):not(:is(q,blockquote,.quote,em,i,b,strong,a,code,pre,h1,h2,h3,h4,h5,h6,u)):not(:is(q,blockquote,.quote,em,i,b,strong,a,code,pre,h1,h2,h3,h4,h5,h6,u) *){color:' + color + '!important;}';
+    }
+    if (p.glow && validColor(p.glowColor)) css += '#chat .mes .mes_text{text-shadow:0 0 ' + clamp(p.glowSize,1,20,4) + 'px ' + p.glowColor + '!important;}';
+    themeStyle.textContent = css;
+    for (const {n, saved, values} of excluded) {
+      excludedStyles.set(n, saved);
+      for (const [prop, value] of Object.entries(values)) if (value) n.style.setProperty(prop, value, 'important');
+    }
+  }
+  function paintAppearance() {
+    const a = set.appearance;
+    extrasStyle.textContent = `
+.ll-mgr-card{background:color-mix(in srgb,var(--ll-panel-paper,#fff) ${clamp(a.opacity,0,100,100)}%,transparent)!important;backdrop-filter:blur(${clamp(a.blur,0,40)}px)!important;-webkit-backdrop-filter:blur(${clamp(a.blur,0,40)}px)!important}
+.ll-mgr [data-t="frame"]{display:${a.showFrame ? 'block' : 'none'}!important}
+.ll-mgr [data-t="color"]{display:${a.showColor ? 'block' : 'none'}!important}
+${a.showColor ? '' : '.ll-ink-toggle{display:none!important}'}
+.ll-theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.ll-theme-card{border:1px solid var(--ll-panel-line,#aaa);border-radius:12px;overflow:hidden;min-width:0;padding:0 0 10px}
+.ll-theme-card.on{outline:2px solid var(--ll-panel-ink,#333);outline-offset:1px}
+.ll-theme-cover{height:120px;display:flex;align-items:center;justify-content:center;background:var(--ll-panel-line,#eee);font-size:36px;overflow:hidden}
+.ll-theme-cover img{width:100%;height:100%;object-fit:cover}
+.ll-theme-card strong{display:block;padding:10px;overflow-wrap:anywhere}
+.ll-theme-card .ll-row{padding:0 8px;flex-wrap:wrap}
+.ll-color-row{display:flex;align-items:center;gap:8px;margin:9px 0;flex-wrap:wrap}
+.ll-color-row>label{flex:1;min-width:120px;overflow-wrap:anywhere}
+.ll-color-row input{max-width:190px}
+.ll-mgr .ll-color-chip{width:38px;height:32px;flex:none;border-radius:6px;background:var(--chip)!important}
+.ll-picker{flex-basis:100%;width:100%;border:1px solid var(--ll-panel-line,#aaa);padding:12px;margin:10px 0;display:grid;justify-items:center;gap:8px}
+.ll-picker canvas{max-width:100%;touch-action:none}
+.ll-mgr .ll-theme-search{width:100%;margin-bottom:12px}
+.ll-theme-notice{padding:8px;border:1px dashed var(--ll-panel-line,#aaa);margin:8px 0;white-space:pre-wrap}
+.ll-mgr details>summary{cursor:pointer;padding:8px 0}
+@media(min-width:700px){.ll-mgr:has([data-t="themes"].on) .ll-mgr-card,.ll-mgr:has([data-t="text"].on) .ll-mgr-card{width:min(92vw,940px)!important}}
+`;
+  }
+  async function applyNativeTheme(name) {
+    const select = doc.querySelector('#themes');
+    if (!select || ![...select.options].some(o => o.value === name)) throw Error('找不到这套美化，可能已改名或删除，请重新绑定。');
+    if (select.value !== name) {
+      restoreExcluded(); themeStyle.textContent = ''; select.value = name;
+      if (host.jQuery) host.jQuery(select).trigger('change'); else select.dispatchEvent(new host.Event('change', { bubbles: true }));
+    }
+    paintTheme(); cache.clear(); paintAll();
+  }
+  async function checkCharacterTheme(force = false) {
+    if (dead || bindingBusy) return;
+    const char = currentCharacter(), id = char?.avatar || '';
+    if (!force && id === lastCharacter) return;
+    lastCharacter = id;
+    const bound = id && set.charThemes[id]; if (!bound) { paintTheme(); return; }
+    bindingBusy = true;
+    try { await applyNativeTheme(bound); }
+    catch (error) { host.toastr?.warning?.(error.message, '角色美化绑定'); }
+    finally { bindingBusy = false; }
+  }
+  function queueThemePaint() {
+    host.clearTimeout(themeChangeTimer);
+    themeChangeTimer = host.setTimeout(() => { themeChangeTimer = 0; if (!dead) { paintTheme(); cache.clear(); paintAll(); } }, 80);
+  }
+  let contextEvents, chatEvent, messageEvent;
+  function startThemes() {
+    themeReady = true; paintAppearance();
+    // Migrate the previous global text controls once, without keeping a second overriding layer.
+    if (!set.themeTextMigrated) {
+      const p = profile(), old = set.text || {};
+      if (old.colorEnabled && validColor(old.color)) p.text.body = old.color;
+      if (old.glowEnabled) Object.assign(p, {glow:true,glowColor:old.glowColor,glowSize:old.glowSize});
+      delete set.text; set.themeTextMigrated = true; saveSet(); paintText();
+    }
+    const c = host.SillyTavern?.getContext?.(); contextEvents = c?.eventSource;
+    chatEvent = c?.event_types?.CHAT_CHANGED; messageEvent = c?.event_types?.MESSAGE_RENDERED || c?.event_types?.CHARACTER_MESSAGE_RENDERED;
+    if (chatEvent) contextEvents?.on?.(chatEvent, onChatTheme);
+    if (messageEvent) contextEvents?.on?.(messageEvent, queueThemePaint);
+    doc.addEventListener('change', onThemeSelect);
+    // A cheap signature check also covers older ST and jQuery-triggered theme changes.
+    const poll = () => {
+      if (dead) return;
+      checkCharacterTheme();
+      const sig = themeName() + '\n' + (doc.querySelector('#custom-style')?.textContent || '');
+      if (sig !== lastThemeSignature) { lastThemeSignature = sig; queueThemePaint(); }
+      bindingTimer = host.setTimeout(poll, 1000);
+    };
+    const chat = doc.querySelector('#chat');
+    if (chat) { themeObserver = new host.MutationObserver(records => { if (records.some(r => [...r.addedNodes].some(n => n.nodeType === 1))) queueThemePaint(); }); themeObserver.observe(chat, {childList:true,subtree:true}); }
+    poll(); paintTheme();
+  }
+  function onChatTheme() { checkCharacterTheme(true); queueThemePaint(); }
+  function onThemeSelect(e) { if (e.target?.id === 'themes') queueThemePaint(); }
+  function stopThemes() {
+    host.clearTimeout(themeChangeTimer); host.clearTimeout(bindingTimer);
+    if (chatEvent) contextEvents?.removeListener?.(chatEvent, onChatTheme);
+    if (messageEvent) contextEvents?.removeListener?.(messageEvent, queueThemePaint);
+    doc.removeEventListener('change', onThemeSelect);
+    themeObserver?.disconnect();
+    restoreExcluded(); themeStyle.remove(); extrasStyle.remove();
+  }
+
   /* 面板样式 */
   const panelCss = doc.createElement('style');
   panelCss.textContent = `
@@ -333,7 +576,7 @@ html:root.ll-custom-global-bg body{background-image:var(--ll-global-bg)!importan
 html:root.ll-custom-global-bg body :is(#bg1,#bg_custom){background-image:none!important;background-color:transparent!important}
 html:root body #chat .mes .ll-avatar-entry > img{display:block!important;position:static!important;width:var(--ll-entry-size,22px)!important;height:var(--ll-entry-size,22px)!important;max-width:none!important;max-height:none!important;object-fit:contain!important;border:0!important;border-radius:0!important;background:transparent!important;pointer-events:none!important;padding:0!important;margin:0!important;filter:none!important}
 html:root.ll-custom-bubbles body :is(#sheld,#chat){background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
-html:root.ll-custom-bubbles body #chat .mes{background:color-mix(in srgb,var(--ll-bubble-color,var(--lb-paper,var(--ll-paper,var(--SmartThemeBlurTintColor,#ffffff)))) var(--ll-bubble-opacity,100%),transparent)!important;backdrop-filter:blur(var(--ll-bubble-blur,0px))!important;-webkit-backdrop-filter:blur(var(--ll-bubble-blur,0px))!important}
+html:root.ll-custom-bubbles body #chat .mes{background-color:color-mix(in srgb,var(--ll-bubble-fill) var(--ll-bubble-opacity,100%),transparent)!important;background-image:var(--ll-bubble-paper,none)!important;background-size:5px 7px,7px 11px!important;backdrop-filter:blur(var(--ll-bubble-blur,0px)) brightness(var(--ll-bubble-brightness,100%))!important;-webkit-backdrop-filter:blur(var(--ll-bubble-blur,0px)) brightness(var(--ll-bubble-brightness,100%))!important}
 html:root.ll-custom-bubbles body #chat .mes > .mes_block,html:root.ll-custom-bubbles body #chat .mes .mes_text,html:root.ll-custom-bubbles body #chat .mes > .mesAvatarWrapper{background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 .ll-grid>div.icon{background-size:contain!important;background-repeat:no-repeat}
 .ll-mgr-preview-entry{display:flex;align-items:center;justify-content:center;min-height:48px;padding:8px;border:1px dashed var(--ll-panel-line,#ccc)}
@@ -544,7 +787,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
     wrap.innerHTML = `<div class="ll-mgr-card" role="dialog" aria-label="头像管理">
 <h3>♪ 𝒶𝓋𝒶𝓉𝒶𝓇 & 𝒷𝒶𝒸𝓀𝑔𝓇ℴ𝓊𝓃𝒹</h3>
 <div class="ll-row"><span>给谁</span><select class="who"></select></div>
-<div class="ll-mgr-tabs"><button data-t="avatar">头像</button><button data-t="frame">头像框</button><button data-t="color">颜色</button><button data-t="bg">头像区域背景</button><button data-t="globalBg">全局背景</button><button data-t="bubbles">气泡</button><button data-t="entry">入口</button><button data-t="text">正文</button><button data-t="lib">本地库</button></div>
+<div class="ll-mgr-tabs"><button data-t="avatar">头像</button><button data-t="frame">头像框</button><button data-t="color">颜色</button><button data-t="bg">头像区域背景</button><button data-t="globalBg">全局背景</button><button data-t="bubbles">气泡</button><button data-t="themes">美化绑定</button><button data-t="text">主题色</button><button data-t="lib">本地库</button><button data-t="entry">设置</button></div>
 <div class="pane"></div>
 <div class="ll-row ll-mgr-footer"><button type="button" class="close">关闭</button></div></div>`;
     const $ = s => wrap.querySelector(s), pane = $('.pane'), who = $('.who');
@@ -603,11 +846,12 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       return g;
     };
     function render(t) {
+      if ((t === 'frame' && !set.appearance.showFrame) || (t === 'color' && !set.appearance.showColor)) t = 'avatar';
       tab = t; pane.textContent = '';
       wrap.querySelectorAll('.ll-mgr-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
       const a = cur();
-      if (!a && !['lib', 'globalBg', 'bubbles', 'entry', 'text'].includes(t)) { pane.innerHTML = '<p class="ll-tip">当前聊天里还没有头像。</p>'; return; }
-      if (t === 'avatar') renderAvatar(a); else if (t === 'frame') renderFrame(a); else if (t === 'color') renderColor(a); else if (t === 'bg' || t === 'globalBg') renderBg(a, t === 'globalBg'); else if (t === 'bubbles') renderBubbles(); else if (t === 'entry') renderEntry(); else if (t === 'text') renderText(); else renderLib();
+      if (!a && !['lib', 'globalBg', 'bubbles', 'entry', 'text', 'themes'].includes(t)) { pane.innerHTML = '<p class="ll-tip">当前聊天里还没有头像。</p>'; return; }
+      if (t === 'avatar') renderAvatar(a); else if (t === 'frame') renderFrame(a); else if (t === 'color') renderColor(a); else if (t === 'bg' || t === 'globalBg') renderBg(a, t === 'globalBg'); else if (t === 'bubbles') renderBubbles(); else if (t === 'entry') renderEntry(); else if (t === 'text') renderThemeColors(); else if (t === 'themes') renderThemes(); else renderLib();
     }
     /* 头像 */
     function renderAvatar(a) {
@@ -856,13 +1100,155 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       hex.oninput = () => { if (isHex(hex.value)) { customColor = hex.value; color.value = customColor; enabled.checked = true; apply(); } };
       pane.querySelector('.bubble-color-auto').onclick = () => { customColor = ''; hex.value = ''; apply(); };
       function labels() { pane.querySelector('.opacity-value').textContent = alpha.value + '%'; pane.querySelector('.blur-value').textContent = blur.value + 'px'; }
-      function apply() { set.bubbles = { enabled: enabled.checked, opacity: +alpha.value, blur: +blur.value, color: customColor }; labels(); saveSet(); paintBubbles(); }
+      function apply() { set.bubbles = { ...set.bubbles, enabled: enabled.checked, opacity: +alpha.value, blur: +blur.value, color: customColor }; labels(); saveSet(); paintBubbles(); }
       enabled.onchange = apply;
       alpha.oninput = blur.oninput = () => { enabled.checked = true; apply(); };
-      pane.querySelector('.clear-glass').onclick = () => { enabled.checked = true; alpha.value = 0; blur.value = 0; apply(); };
+      pane.querySelector('.clear-glass').onclick = () => { enabled.checked = true; alpha.value = 0; blur.value = 0; set.bubbles = { ...set.bubbles, brightness: 100, paper: false }; apply(); render('bubbles'); };
       pane.querySelector('.reset-glass').onclick = () => { delete set.bubbles; saveSet(); paintBubbles(); render('bubbles'); };
-      labels();
+      labels(); renderBubbleExtras();
     }
+    function renderBubbleExtras() {
+      const box = doc.createElement('div');
+      const commit = (key, value) => { set.bubbles = { opacity: 100, blur: 0, ...set.bubbles, enabled: true, [key]: value }; pane.querySelector('.bubble-enabled').checked = true; saveSet(); paintBubbles(); };
+      const b = set.bubbles || {};
+      toggleRow(box, '启用背景模糊', b.blurEnabled !== false, v => commit('blurEnabled', v));
+      rangeRow(box, '背景明暗（100% 为原色）', b.brightness ?? 100, 20, 180, '%', v => commit('brightness', v));
+      toggleRow(box, '纸纹效果', b.paper, v => commit('paper', v));
+      rangeRow(box, '纸纹强度', b.paperStrength ?? 12, 0, 35, '%', v => commit('paperStrength', v));
+      colorRow(box, '纸纹颜色', b.paperColor || '#847765', v => commit('paperColor', v), () => commit('paperColor','#847765'));
+      pane.append(fold('模糊、纸纹与背景明暗', box));
+    }
+    function notice(text) { const n = doc.createElement('div'); n.className = 'll-theme-notice'; n.textContent = text; pane.append(n); return n; }
+    function button(label, click) { const b = doc.createElement('button'); b.type = 'button'; b.textContent = label; b.onclick = click; return b; }
+    function rangeRow(parent, label, value, min, max, unit, commit) {
+      const row = doc.createElement('div'); row.className = 'll-row';
+      const title = doc.createElement('label'); title.textContent = label;
+      const input = doc.createElement('input'); input.type = 'range'; input.min = min; input.max = max; input.step = 1; input.value = value; input.setAttribute('aria-label', label);
+      const out = doc.createElement('output'); out.textContent = value + unit;
+      input.oninput = () => { out.textContent = input.value + unit; commit(+input.value); };
+      row.append(title, input, out); parent.append(row); return input;
+    }
+    function toggleRow(parent, label, checked, commit) {
+      const row = doc.createElement('label'); row.className = 'll-row';
+      const input = doc.createElement('input'); input.type = 'checkbox'; input.checked = !!checked;
+      input.onchange = () => commit(input.checked); row.append(input, doc.createTextNode(label)); parent.append(row); return input;
+    }
+    /* A shared ring picker, with saturation/value square and independent alpha. No CDN dependency. */
+    function openColorWheel(parent, initial, commit) {
+      pane.querySelector('.ll-picker')?.remove();
+      const box = doc.createElement('div'); box.className = 'll-picker';
+      const cv = doc.createElement('canvas'); cv.width = cv.height = 240; cv.style.width = cv.style.height = '240px';
+      cv.setAttribute('aria-label','外环选择色相，中间选择饱和度和明度');
+      const g = cv.getContext('2d');
+      const probe = doc.createElement('span'); probe.style.color = validColor(initial) ? initial : '#ffffff'; box.append(probe); parent.append(box);
+      const computed = host.getComputedStyle(probe).color; probe.remove();
+      // Canvas normalizes CSS color syntax, including modern color functions, into sRGB pixels.
+      g.fillStyle = computed; g.fillRect(0,0,1,1);
+      const rgba = g.getImageData(0,0,1,1).data;
+      const rgb = [...rgba].slice(0,3).map(n => n/255), mx = Math.max(...rgb), mn = Math.min(...rgb), d = mx-mn;
+      let h = !d ? 0 : mx===rgb[0] ? ((rgb[1]-rgb[2])/d)%6 : mx===rgb[1] ? (rgb[2]-rgb[0])/d+2 : (rgb[0]-rgb[1])/d+4;
+      h = (h*60+360)%360; let sat = mx ? d/mx : 0, val = mx, alpha = rgba[3]/255;
+      const code = doc.createElement('input'); code.type = 'text'; code.setAttribute('aria-label','颜色代码');
+      const swatch = doc.createElement('span'); swatch.style.cssText = 'width:64px;height:22px;border:1px solid #888';
+      const colorValue = () => {
+        const f = n => { const k=(n+h/60)%6; return Math.round(255*(val-val*sat*Math.max(0,Math.min(k,4-k,1)))); };
+        const colors=[f(5),f(3),f(1)]; return alpha>=.999 ? '#'+colors.map(n=>n.toString(16).padStart(2,'0')).join('') : `rgba(${colors.join(', ')}, ${alpha.toFixed(2)})`;
+      };
+      const draw = () => {
+        g.clearRect(0,0,240,240);
+        for(let i=0;i<360;i++){g.beginPath();g.strokeStyle=`hsl(${i},100%,50%)`;g.lineWidth=20;g.arc(120,120,109,i*Math.PI/180,(i+1.5)*Math.PI/180);g.stroke();}
+        g.fillStyle=`hsl(${h},100%,50%)`;g.fillRect(54,54,132,132);
+        let grad=g.createLinearGradient(54,0,186,0);grad.addColorStop(0,'#fff');grad.addColorStop(1,'#fff0');g.fillStyle=grad;g.fillRect(54,54,132,132);
+        grad=g.createLinearGradient(0,54,0,186);grad.addColorStop(0,'#0000');grad.addColorStop(1,'#000');g.fillStyle=grad;g.fillRect(54,54,132,132);
+        for(const [x,y] of [[120+109*Math.cos(h*Math.PI/180),120+109*Math.sin(h*Math.PI/180)],[54+sat*132,54+(1-val)*132]]){g.beginPath();g.arc(x,y,6,0,Math.PI*2);g.strokeStyle='#000';g.lineWidth=3;g.stroke();g.strokeStyle='#fff';g.lineWidth=1.5;g.stroke();}
+        code.value = colorValue(); swatch.style.background = code.value;
+      };
+      let grab = '';
+      const pick = e => { const rect=cv.getBoundingClientRect(), x=(e.clientX-rect.left)*240/rect.width, y=(e.clientY-rect.top)*240/rect.height;
+        if(grab==='ring') h=(Math.atan2(y-120,x-120)*180/Math.PI+360)%360;
+        else {sat=clamp((x-54)/132,0,1);val=1-clamp((y-54)/132,0,1);} draw(); };
+      cv.onpointerdown=e=>{const r=cv.getBoundingClientRect(),x=(e.clientX-r.left)*240/r.width,y=(e.clientY-r.top)*240/r.height; const dist=Math.hypot(x-120,y-120);
+        if(dist>=98 && dist<=120) grab='ring'; else if(x>=54&&x<=186&&y>=54&&y<=186) grab='square'; else return;
+        cv.setPointerCapture(e.pointerId);pick(e);};
+      cv.onpointermove=e=>{if(grab)pick(e);};cv.onpointerup=cv.onpointercancel=()=>{grab='';};
+      box.append(cv, swatch, code);
+      rangeRow(box,'不透明度',Math.round(alpha*100),0,100,'%',n=>{alpha=n/100;draw();});
+      const actions=doc.createElement('div');actions.className='ll-row';
+      actions.append(button('应用颜色',()=>{if(!validColor(code.value)){code.setCustomValidity('请输入有效的 CSS 颜色');code.reportValidity();return;}commit(code.value.trim());box.remove();}),button('取消',()=>box.remove()));
+      code.oninput=()=>code.setCustomValidity('');box.append(actions);draw();
+    }
+    function colorRow(parent, label, value, commit, reset, hint = '') {
+      const row = doc.createElement('div'); row.className = 'll-color-row';
+      const title = doc.createElement('label'); title.textContent = label; title.title = hint || label;
+      const chip = button(' ',()=>openColorWheel(row, input.value || value, apply)); chip.className = 'll-color-chip'; chip.setAttribute('aria-label',label+'取色盘');
+      const input = doc.createElement('input'); input.type='text'; input.value=value || '';input.placeholder='跟随美化 / CSS 颜色';input.setAttribute('aria-label',label+'颜色代码');
+      const apply = color => { input.value=color;chip.style.setProperty('--chip', color || 'transparent');commit(color); };
+      input.onchange=()=>{if(validColor(input.value)){input.setCustomValidity('');apply(input.value.trim());}else{input.setCustomValidity('支持 HEX、RGB、HSL 等 CSS 颜色代码');input.reportValidity();}};
+      input.oninput=()=>input.setCustomValidity('');chip.style.setProperty('--chip',validColor(value)?value:'transparent');
+      row.append(title,chip,input,button('还原',()=>{reset();input.value='';chip.style.setProperty('--chip','transparent');}));parent.append(row);return row;
+    }
+    function renderThemes() {
+      const char = currentCharacter(), name = char?.name || '未选择单人角色';
+      const tip = notice('当前角色：' + name + (char?.avatar && set.charThemes[char.avatar] ? '\n已绑定：' + set.charThemes[char.avatar] : '\n尚未绑定。未绑定角色保留当前美化。'));
+      const search=doc.createElement('input');search.type='text';search.className='ll-theme-search';search.placeholder='搜索美化名称';search.setAttribute('aria-label','搜索美化');pane.append(search);
+      const actions=doc.createElement('div');actions.className='ll-row';
+      actions.append(button('刷新美化列表',()=>render('themes')),button('解除当前角色绑定',()=>{if(char?.avatar){delete set.charThemes[char.avatar];saveSet();render('themes');}}));pane.append(actions);
+      const grid=doc.createElement('div');grid.className='ll-theme-grid';pane.append(grid);
+      const themes=[...(doc.querySelector('#themes')?.options || [])].filter(o=>o.value && !o.disabled);
+      if(!themes.length){tip.textContent+='\n酒馆的美化列表还未加载，请稍后刷新。';return;}
+      function draw(){grid.textContent='';for(const theme of themes.filter(t=>t.textContent.toLowerCase().includes(search.value.toLowerCase()))){
+        const card=doc.createElement('article');card.className='ll-theme-card'+(theme.value===themeName()?' on':'');
+        const cover=doc.createElement('div');cover.className='ll-theme-cover';const item=byId(set.themeCovers[theme.value]);
+        if(item){const img=doc.createElement('img');img.src=itemUrl(item);img.alt=theme.textContent+'封面';cover.append(img);}else cover.textContent='♪';
+        const title=doc.createElement('strong');title.textContent=theme.textContent+(char?.avatar&&set.charThemes[char.avatar]===theme.value?' · 已绑定':'');
+        const row=doc.createElement('div');row.className='ll-row';
+        row.append(button('应用',async()=>{try{await applyNativeTheme(theme.value);draw();}catch(e){tip.textContent=e.message;}}));
+        const bind=button('绑定当前角色',async()=>{const current=currentCharacter();if(!current?.avatar)return;try{await applyNativeTheme(theme.value);set.charThemes[current.avatar]=theme.value;saveSet();render('themes');}catch(e){tip.textContent=e.message;}});bind.disabled=!char?.avatar;row.append(bind);
+        const upload=doc.createElement('input');upload.type='file';upload.accept='image/*';upload.hidden=true;
+        upload.onchange=async()=>{const f=upload.files?.[0];if(!f)return;try{const {blob,a}=await shrink(await readFile(f),960,'image/jpeg');const it=await libAdd({kind:'cover',name:theme.value+' · 封面',blob,a});const old=set.themeCovers[theme.value];set.themeCovers[theme.value]=it.id;saveSet();if(old)await libDel([old]);draw();}catch(e){tip.textContent='封面保存失败：'+e.message;}};
+        row.append(button('上传封面',()=>upload.click()),upload);
+        if(item)row.append(button('移除封面',async()=>{delete set.themeCovers[theme.value];saveSet();await libDel([item.id]);draw();}));
+        card.append(cover,title,row);grid.append(card);
+      }} search.oninput=draw;draw();
+    }
+    function renderThemeColors() {
+      const p=profile();p.colors ||= {};p.text ||= {};p.variables ||= {};
+      const save=()=>{saveSet();paintTheme();};
+      notice('当前美化：'+(themeName()==='__current__'?'当前 CSS':themeName())+'\n颜色单独记在这套美化下。点色块打开圆环取色盘，也可输入 CSS 颜色代码。');
+      const exclusions=doc.createElement('input');exclusions.type='text';exclusions.value=p.exclude||'';exclusions.placeholder='例如：pre, code, .状态栏, love_letter';exclusions.setAttribute('aria-label','不生效的标签或选择器');
+      const label=doc.createElement('label');label.textContent='不改色的标签 / CSS 选择器（逗号分隔，包含其中内容）';pane.append(label,exclusions);
+      exclusions.onchange=()=>{try{if(exclusions.value.trim())doc.querySelector(exclusions.value);p.exclude=exclusions.value.trim();exclusions.setCustomValidity('');save();}catch(_){exclusions.setCustomValidity('选择器格式不正确，请检查逗号、标签名和括号');exclusions.reportValidity();}};
+      const textBox=doc.createElement('div');
+      for(const [kind,label,tags] of textKinds) colorRow(textBox,label,p.text[kind] || host.getComputedStyle(doc.querySelector(tags ? '#chat .mes_text :is(' + tags + ')' : '#chat .mes_text') || root).color,v=>{p.text[kind]=v;save();},()=>{delete p.text[kind];save();});
+      toggleRow(textBox,'正文发光',p.glow,v=>{p.glow=v;save();});
+      colorRow(textBox,'发光颜色',p.glowColor||'#ffffff',v=>{p.glowColor=v;save();},()=>{delete p.glowColor;p.glow=false;save();});
+      rangeRow(textBox,'发光强度',p.glowSize||4,1,20,'px',v=>{p.glowSize=v;save();});pane.append(fold('正文与各种文本',textBox));
+      const nativeBox=doc.createElement('div');
+      for(const [label,variable] of nativeColors) colorRow(nativeBox,label,p.variables[variable]||host.getComputedStyle(root).getPropertyValue(variable).trim(),v=>{p.variables[variable]=v;save();},()=>{delete p.variables[variable];save();},variable);
+      pane.append(fold('酒馆全局主题色',nativeBox,false));
+      const cssBox=doc.createElement('div');
+      toggleRow(cssBox,'同时读取其他可访问样式表（含界面与扩展）',p.allSheets,v=>{p.allSheets=v;save();render('text');});
+      cssBox.append(button('重新读取当前 CSS 颜色',()=>render('text')));
+      const result=detectColors();
+      const info=doc.createElement('p');info.className='ll-tip';info.textContent=`读到 ${result.found.size} 种 CSS 颜色。可改边框、背景、渐变、阴影和颜色变量；跨域样式、图片本身及图片内的颜色无法直接读取。`;cssBox.append(info);
+      const search=doc.createElement('input');search.type='text';search.placeholder='搜索颜色 / 属性 / 选择器';search.setAttribute('aria-label','搜索 CSS 颜色');cssBox.append(search);
+      const rows=[];
+      for(const [original,item] of result.found){const uses=[...item.uses].join('\n');const row=colorRow(cssBox,item.value,p.colors[original]||item.value,v=>{p.colors[original]=v;save();},()=>{delete p.colors[original];save();},uses);rows.push({row,text:(original+' '+uses).toLowerCase()});}
+      search.oninput=()=>rows.forEach(({row,text})=>row.hidden=!text.includes(search.value.toLowerCase()));
+      pane.append(fold('读取美化内的 CSS 配色',cssBox));
+      pane.append(button('还原这套美化的所有颜色',()=>{if(!host.confirm('还原当前美化的颜色修改？头像、图片和角色绑定会保留。'))return;delete set.themeProfiles[themeName()];save();render('text');}));
+    }
+    function renderManagerSettings() {
+      const box=doc.createElement('div');const a=set.appearance;
+      const save=()=>{saveSet();paintAppearance();paintAll();};
+      rangeRow(box,'管理器不透明度',a.opacity??100,0,100,'%',v=>{a.opacity=v;save();});
+      rangeRow(box,'管理器毛玻璃',a.blur||0,0,40,'px',v=>{a.blur=v;save();});
+      toggleRow(box,'显示并启用头像框功能',a.showFrame,v=>{a.showFrame=v;save();});
+      toggleRow(box,'显示并启用序列头像颜色功能',a.showColor,v=>{a.showColor=v;save();});
+      const note=doc.createElement('p');note.className='ll-tip';note.textContent='这两项默认关闭，开启后在前面的标签栏显示。主题色不受这个开关影响。';box.append(note);
+      pane.prepend(fold('管理器外观与可选功能',box));
+    }
+
     function renderText() {
       const t = set.text || {};
       pane.innerHTML = `<div class="ll-tip">这些设置统一应用到消息正文，包括引用、斜体和代码文字。修改后立即保存。</div>
@@ -918,13 +1304,13 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       }));
       mode.onchange = apply; text.oninput = size.oninput = apply;
       pane.querySelector('.entry-reset').onclick = () => { delete set.entry; saveSet(); paintEntries(); render('entry'); };
-      previewEntry();
+      previewEntry(); renderManagerSettings();
     }
     /* 本地库 */
     function renderLib() {
-      const names = { avatar: '头像', frame: '头像框', bg: '背景', icon: '入口图标' };
+      const names = { avatar: '头像', frame: '头像框', bg: '背景', icon: '入口图标', cover: '美化封面' };
       pane.append(Object.assign(doc.createElement('div'), { className: 'll-tip', textContent: '这些图都存在这台设备的浏览器里。点右上角 × 删除单张。' }));
-      for (const kind of ['avatar', 'frame', 'bg', 'icon']) {
+      for (const kind of ['avatar', 'frame', 'bg', 'icon', 'cover']) {
         const items = lib.filter(x => x.kind === kind);
         const body = doc.createElement('div');
         const g = doc.createElement('div'); g.className = 'll-grid';
@@ -950,7 +1336,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       const all = Object.assign(doc.createElement('button'), { type: 'button', className: 'danger', textContent: '全部删除（清空本地库和所有设置）' });
       all.onclick = async () => {
         if (!host.confirm('清空所有保存的头像、头像框、背景，并恢复默认？')) return;
-        await libDel(lib.map(x => x.id)); set = { avatar: {}, bg: {}, frame: {} }; saveSet(); paintAll(); render('lib');
+        await libDel(lib.map(x => x.id)); set = { avatar: {}, bg: {}, frame: {}, appearance: {opacity:100,blur:0,showFrame:false,showColor:false}, themeProfiles:{},charThemes:{},themeCovers:{},themeTextMigrated:true }; saveSet(); paintAppearance(); paintTheme(); paintAll(); render('lib');
       };
       row.append(all); pane.append(row);
     }
@@ -1005,7 +1391,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
     button.className = 'menu_button interactable'; button.textContent = '♡ 打开头像与背景管理';
     button.addEventListener('click', () => openManager(null));
     const note = doc.createElement('div'); note.className = 'opacity50p';
-    note.textContent = '头像、头像框、背景、气泡与正文样式 · v1.0.1';
+    note.textContent = '头像、头像框、背景、气泡与正文样式 · v1.1.0';
     content.append(button, note); drawer.append(header, content);
     section.append(drawer); container.append(section);
   }
@@ -1062,7 +1448,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
 
   function dispose() {
     if (dead) return;
-    dead = true; host.clearTimeout(timer); observer.disconnect();
+    dead = true; stopThemes(); host.clearTimeout(timer); observer.disconnect();
     host.removeEventListener('pagehide', onPageHide);
     doc.getElementById('lili-avatar-extension-settings')?.remove();
     doc.removeEventListener('load', loaded, true); host.removeEventListener('resize', scheduleFull);
@@ -1079,12 +1465,13 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       const img = a.querySelector('img'); if (img?.dataset.llOrig) { img.setAttribute('src', img.dataset.llOrig); delete img.dataset.llOrig; delete img.dataset.llSet; }
     });
     urls.forEach(u => host.URL.revokeObjectURL(u)); panelCss.remove();
-    root.classList.remove('ll-custom-global-bg', 'll-custom-bubbles', 'll-custom-text-color', 'll-custom-text-glow'); ['--ll-global-bg','--ll-global-bg-size','--ll-global-bg-pos','--ll-bubble-opacity','--ll-bubble-blur','--ll-bubble-color','--ll-text-color','--ll-text-glow-color','--ll-text-glow-size'].forEach(p => root.style.removeProperty(p));
+    root.classList.remove('ll-custom-global-bg', 'll-custom-bubbles', 'll-custom-text-color', 'll-custom-text-glow'); ['--ll-global-bg','--ll-global-bg-size','--ll-global-bg-pos','--ll-bubble-opacity','--ll-bubble-blur','--ll-bubble-color','--ll-bubble-fill','--ll-bubble-brightness','--ll-bubble-paper','--ll-text-color','--ll-text-glow-color','--ll-text-glow-size'].forEach(p => root.style.removeProperty(p));
     guard.remove(); if (host[key]?.dispose === dispose) delete host[key];
   }
   function onPageHide(event) { if (!event.persisted) dispose(); }
   host[key] = { dispose, open: () => openManager(null), extension: true };
   host.addEventListener('pagehide', onPageHide);
+  startThemes();
   scan();
 }
 
