@@ -1,5 +1,3 @@
-// 梨梨 · 头像管理器 — 白川
-// Standalone SillyTavern extension. Uses the same local data as script v0.28.
 const INSTANCE_KEY = '__liliSequenceAvatarV7';
 let started = false;
 let waitingForDom = false;
@@ -26,36 +24,31 @@ export function dispose() {
 function startManager() {
 
   'use strict';
-  /* 梨梨 · 头像管理器 插件 v1.1.0 — 白川；头像、头像框、颜色与背景管理。 */
+
   const host = window;
   const doc = host.document;
   const key = '__liliSequenceAvatarV7';
   host[key]?.dispose();
   let timer = 0, dead = false;
 
-  /* 主题专用的头像颜色快捷入口；管理器入口始终可用。 */
   const guard = doc.createElement('style');
   guard.textContent = '.ll-ink-toggle{display:none}';
   doc.head.append(guard);
 
-  /* ---------- 系统日夜 ---------- */
   const root = doc.documentElement;
   const darkQuery = host.matchMedia?.('(prefers-color-scheme: dark)');
   const applyScheme = () => { root.dataset.llScheme = darkQuery?.matches ? 'dark' : 'light'; };
   applyScheme();
   darkQuery?.addEventListener?.('change', applyScheme);
 
-  /* ---------- 头像元素颜色：手动切换（默认白色） ----------
-   * 按头像图片记住选择：同一张头像在所有楼层一起变。 */
   const avatarSelector = '#chat .mes .avatar';
   const INK_KEY = 'lili-avatar-ink';
   let inkMap = {};
   try { inkMap = JSON.parse(host.localStorage.getItem(INK_KEY) || '{}') || {}; } catch (_) { inkMap = {}; }
   const srcOf = avatar => keyOf(avatar);
-  /* 颜色顺序由主题决定：主题里写 --ll-ink-cycle（粉色版：lightpink neon white black），
-   * 没写就是黑白版的 white dark。第一个是默认色。 */
+
   const INK_NAME = { white: '白色', dark: '黑色', black: '黑色', lightpink: '浅粉色', neon: '荧光粉色' };
-  const cache = new Map();                       // 每一轮扫描清空一次
+  const cache = new Map();
   const rootVar = p => { if (!cache.has(p)) cache.set(p, host.getComputedStyle(root).getPropertyValue(p).trim()); return cache.get(p); };
   const inkCycle = () => {
     const raw = rootVar('--ll-ink-cycle').replace(/['"]/g, '').trim();
@@ -69,7 +62,7 @@ function startManager() {
     for (const v of [inkMap[k], inkMap['*']]) if (cyc.includes(v) || isHex(v)) return v;
     return cyc[0];
   }
-  /* 自定义颜色：把主题里白色版本的图案换成这个颜色，写在这个头像上 */
+
   const CUSTOM_VARS = ['--ll-av-staff-w', '--ll-av-staff-w-static', '--ll-hang-1-w', '--ll-hang-2-w', '--ll-hang-3-w'];
   function recolor(v, hex) { return v.replace(/%23ffffff/gi, '%23' + hex.slice(1)).replace(/#ffffff/gi, hex); }
   function paintCustom(avatar, hex) {
@@ -115,7 +108,7 @@ function startManager() {
       btn.addEventListener('click', e => {
         e.preventDefault(); e.stopPropagation();
         const src = srcOf(avatar), cyc = inkCycle(), curV = inkOf(avatar);
-        const next = cyc[(cyc.indexOf(curV) + 1) % cyc.length]; // 自定义色的下一个回到第一个预设
+        const next = cyc[(cyc.indexOf(curV) + 1) % cyc.length];
         if (next === cyc[0] && !inkMap['*']) delete inkMap[src]; else inkMap[src] = next;
         saveInk(); paintAll();
       });
@@ -124,20 +117,15 @@ function startManager() {
     paintOne(avatar);
   }
 
-  /* ---------- 头像管理：换头像 / 头像框 / 背景 + 本地库 ----------
-   * 图片存进浏览器的 IndexedDB（本地库，空间比 localStorage 大得多）；
-   * 每个头像用了哪张图、怎么裁、框怎么放，存在 localStorage 的一小段设置里。
-   * 换头像是直接替换聊天里 <img> 的地址，所以任何美化都能用；
-   * 头像框和头像区域背景兼容普通美化；全局背景独立保存。 */
   const SET_KEY = 'lili-avatar-set';
-  const BOX_A = 88.36 / 47.235;               // 头像方框内沿的宽高比
+  const BOX_A = 88.36 / 47.235;
   const RING_URL = {
     white: 'https://s1.oururl.cn/autoupload/cgoqf/20260926/u3io/1968X1968/%E6%97%A0%E6%A0%87%E9%A2%98138_20260926050820.png',
     black: 'https://s1.oururl.cn/autoupload/cgoqf/20260926/L4ta/1968X1968/%E6%97%A0%E6%A0%87%E9%A2%98138_20260926050824.png',
     lightpink: 'https://s1.oururl.cn/autoupload/cgoqf/20260926/JzJ7/1968X1968/%E6%97%A0%E6%A0%87%E9%A2%98138_20260926050909.png',
     neon: 'https://s1.oururl.cn/autoupload/cgoqf/20260926/frys/1968X1968/%E6%97%A0%E6%A0%87%E9%A2%98138_20260926051024.png',
   };
-  const isSequence = () => !!rootVar('--ll-ring-white');           // 是不是序列系列美化
+  const isSequence = () => !!rootVar('--ll-ring-white');
   const isPinkTheme = () => inkCycle().includes('lightpink');
   const builtinFrames = () => [['white', '白色音符框'], ['black', '黑色音符框'], ...(isPinkTheme() || !isSequence() ? [['lightpink', '浅粉音符框'], ['neon', '荧光粉音符框']] : [])]
     .map(([c, name]) => ({ id: 'builtin:' + c, kind: 'frame', name, builtin: true, css: 'url("' + RING_URL[c] + '")' }));
@@ -147,8 +135,7 @@ function startManager() {
   const saveSet = () => { try { host.localStorage.setItem(SET_KEY, JSON.stringify(set)); } catch (_) {} };
   const keyOfSrc = s => {
     if (!s) return '';
-    /* 同一张头像在酒馆里有两种地址：缩略图 /thumbnail?type=persona&file=xx.png，或原图 /User Avatars/xx.png、/characters/xx.png。
-     * 统一取文件名当钥匙，否则「给谁」里选的人设和聊天里的头像对不上，裁好的图就换不上去。 */
+
     try {
       const u = new URL(s, host.location.href);
       if (u.protocol === 'blob:' || u.protocol === 'data:') return s;
@@ -158,7 +145,6 @@ function startManager() {
   };
   const keyOf = avatar => { const img = avatar?.querySelector('img'); return img ? keyOfSrc(img.dataset.llOrig || img.getAttribute('src')) : ''; };
 
-  /* 本地库（IndexedDB） */
   const DB_NAME = 'lili-avatar-lib';
   let dbp = null;
   const db = () => dbp || (dbp = new Promise((res, rej) => {
@@ -170,8 +156,8 @@ function startManager() {
     const t = d.transaction('items', mode), st = t.objectStore('items'); const out = fn(st);
     t.oncomplete = () => res(out?.result ?? out); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
   }); };
-  let lib = [];                                 // 内存里的一份
-  const urls = new Map();                       // id -> 可用地址
+  let lib = [];
+  const urls = new Map();
   const itemUrl = it => { if (!it) return ''; if (it.builtin) return RING_URL[it.id.slice(8)] || ''; if (it.url) return it.url; if (!urls.has(it.id)) urls.set(it.id, host.URL.createObjectURL(it.blob)); return urls.get(it.id); };
   const byId = id => String(id || '').startsWith('builtin:') ? builtinFrames().find(x => x.id === id) : lib.find(x => x.id === id);
   async function libLoad() { try { lib = (await tx('readonly', s => s.getAll())) || []; } catch (_) { lib = []; } lib.sort((a, b) => b.t - a.t); }
@@ -189,12 +175,13 @@ function startManager() {
     }
     for (const [theme, id] of Object.entries(set.themeCovers || {})) if (ids.includes(id)) delete set.themeCovers[theme];
     if (ids.includes(set.globalBg?.id)) delete set.globalBg;
+    for (const lang of Object.keys(set.fonts?.assignments || {})) if (ids.includes(set.fonts.assignments[lang])) delete set.fonts.assignments[lang];
+    if (ids.includes(set.bubbles?.textureId)) delete set.bubbles.textureId;
     if (ids.includes(set.entry?.iconId)) { delete set.entry.iconId; set.entry.mode = 'text'; }
-    saveSet(); paintAll();
+    saveSet(); paintAll();paintFonts();
   }
   const dataUrlToBlob = async d => (await host.fetch(d)).blob();
 
-  /* 旧版（v0.19）背景设置搬进本地库 */
   async function migrate() {
     let old = null; try { old = JSON.parse(host.localStorage.getItem('lili-avatar-bg') || 'null'); } catch (_) {}
     if (old && typeof old === 'object') {
@@ -213,13 +200,12 @@ function startManager() {
     saveSet();
   }
 
-  /* 把设置画到头像上 */
   const bgSize = (a, z) => (100 * z * Math.max(1, a / BOX_A)).toFixed(2) + '% auto';
   const cssUrl = u => 'url("' + String(u).replace(/["\\\n]/g, m => encodeURIComponent(m)) + '")';
   function paintAvatarImg(avatar) {
     const img = avatar.querySelector('img'); if (!img) return;
     const cur = img.getAttribute('src') || '';
-    if (img.dataset.llOrig && cur !== img.dataset.llSet) { img.dataset.llOrig = cur; delete img.dataset.llSet; } // 酒馆自己换了头像
+    if (img.dataset.llOrig && cur !== img.dataset.llSet) { img.dataset.llOrig = cur; delete img.dataset.llSet; }
     const key = keyOfSrc(img.dataset.llOrig || cur);
     const it = byId(set.avatar[key]);
     if (it) {
@@ -233,14 +219,19 @@ function startManager() {
   }
   function paintBg(avatar) {
     const key = keyOf(avatar), r = set.bg[key] || set.bg['*'], it = r && byId(r.id);
+    const color = r?.sameGlobal ? globalBaseColor() : r?.color;
+    const solid = r?.mode === 'solid' && validColor(color), transparent = r?.mode === 'transparent';
     const nativeBg = isSequence() && !!rootVar('--ll-wave');
-    const sig = it ? it.id + '|' + r.z + '|' + r.x + '|' + r.y + '|' + nativeBg : '';
+    const sig = JSON.stringify([it?.id,r,solid ? color : '',nativeBg]);
     if (avatar.dataset.llBgSig === sig) return; avatar.dataset.llBgSig = sig;
-    avatar.classList.toggle('ll-custom-avatar-bg', !!it && !nativeBg);
-    if (!it) { ['--ll-av-bg', '--ll-av-bg-size', '--ll-av-bg-pos'].forEach(p => avatar.style.removeProperty(p)); return; }
-    avatar.style.setProperty('--ll-av-bg', cssUrl(itemUrl(it)));
-    avatar.style.setProperty('--ll-av-bg-size', bgSize(it.a || 1.6, r.z || 1));
-    avatar.style.setProperty('--ll-av-bg-pos', (r.x ?? 50) + '% ' + (r.y ?? 50) + '%');
+    avatar.classList.toggle('ll-custom-avatar-bg', (!!it || solid || transparent) && !nativeBg);
+    if (!it && !solid && !transparent) { avatar.querySelector(':scope > .ll-avatar-bg-layer')?.remove(); ['--ll-av-bg','--ll-av-bg-size','--ll-av-bg-pos','--ll-av-color','--ll-av-bg-blur'].forEach(p=>avatar.style.removeProperty(p)); return; }
+    avatar.style.setProperty('--ll-av-bg',solid ? 'linear-gradient('+color+','+color+')' : transparent ? 'none' : cssUrl(itemUrl(it)));
+    avatar.style.setProperty('--ll-av-color',solid ? color : 'transparent');
+    avatar.style.setProperty('--ll-av-bg-blur',clamp(r.blur,0,40)+'px');
+    avatar.style.setProperty('--ll-av-bg-size',it ? bgSize(it.a||1.6,r.z||1) : 'cover');
+    avatar.style.setProperty('--ll-av-bg-pos',(r.x??50)+'% '+(r.y??50)+'%');
+    if(!nativeBg && !avatar.querySelector(':scope > .ll-avatar-bg-layer')){const layer=doc.createElement('span');layer.className='ll-avatar-bg-layer';layer.setAttribute('aria-hidden','true');avatar.prepend(layer);}
   }
   function paintOverlay(avatar, r, it) {
     let o = avatar.querySelector(':scope > .ll-frame-over');
@@ -260,7 +251,7 @@ function startManager() {
     const w = avatar.parentElement; if (!w) return;
     if (!set.appearance?.showFrame) { paintOverlay(avatar, {}, null); ['--ll-ring','--ll-ring-mask','--ll-ring-color','--ll-ring-scale','--ll-ring-dx','--ll-ring-dy'].forEach(p => w.style.removeProperty(p)); delete w.dataset.llFrameSig; return; }
     const key = keyOf(avatar), r = set.frame[key] || set.frame['*'] || {}, it = r.id && r.id !== 'auto' ? byId(r.id) : null;
-    if (!isSequence()) { paintOverlay(avatar, r, it); return; }     // 其他美化：直接盖在头像上
+    if (!isSequence()) { paintOverlay(avatar, r, it); return; }
     if (avatar.querySelector(':scope > .ll-frame-over')) { paintOverlay(avatar, r, null); }
     const ink = inkOf(avatar);
     const want = { '--ll-ring': '', '--ll-ring-mask': '', '--ll-ring-color': '' };
@@ -277,32 +268,76 @@ function startManager() {
     cache.clear(); paintGlobalBg(); paintBubbles(); paintText(); paintEntries();
     doc.querySelectorAll('#chat .mes .avatar').forEach(a => { delete a.dataset.llInkSig; delete a.dataset.llBgSig; delete a.dataset.llOverSig; if (a.parentElement) { delete a.parentElement.dataset.llFrameSig; } }); doc.querySelectorAll('#chat .mes .avatar').forEach(a => { if (a.matches(avatarSelector)) paintOne(a); else paintAllAny(a); }); }
 
+  function globalBaseColor() {
+    if (set.globalBg?.mode === 'solid' && validColor(set.globalBg.color)) return set.globalBg.color;
+    const style=host.getComputedStyle(root);return style.getPropertyValue('--lb-paper').trim() || style.getPropertyValue('--ll-paper').trim() || style.getPropertyValue('--SmartThemeBlurTintColor').trim() || '#ffffff';
+  }
+  const PAPER_PRESETS = {
+    fine: ['细纸', 'radial-gradient(#000 0.5px,transparent 1px),radial-gradient(#fff 0.5px,transparent 1px)', '4px 5px,7px 9px'],
+    fiber: ['纤维纸', 'repeating-linear-gradient(12deg,#000 0 0.4px,transparent 0.6px 7px),repeating-linear-gradient(94deg,#fff 0 0.3px,transparent 0.6px 11px)', 'auto'],
+    linen: ['亚麻纸', 'repeating-linear-gradient(0deg,#000 0 0.5px,transparent 0.5px 5px),repeating-linear-gradient(90deg,#fff 0 0.6px,transparent 0.6px 6px)', 'auto'],
+    grain: ['粗纸', 'radial-gradient(ellipse,#000 0 0.8px,transparent 1.5px),radial-gradient(ellipse,#fff 0 1px,transparent 1.8px)', '9px 11px,13px 7px'],
+    laid: ['水纹纸', 'repeating-linear-gradient(0deg,#000 0 0.6px,transparent 0.6px 3px),repeating-linear-gradient(90deg,#000 0 0.5px,transparent 0.5px 28px)', 'auto'],
+    speckle: ['斑点纸', 'radial-gradient(#000 0 0.7px,transparent 1.4px),radial-gradient(#000 0 0.5px,transparent 1px),radial-gradient(#fff 0 0.9px,transparent 1.4px)', '17px 19px,11px 13px,23px 29px'],
+  };
+  let globalSurface = null;
+  function textureOf(b) {
+    const it = b.textureId && byId(b.textureId);
+    if (it?.kind === 'texture') return {image:cssUrl(itemUrl(it)),size:'512px auto'};
+    const p = PAPER_PRESETS[b.paperType || 'fine'] || PAPER_PRESETS.fine;
+    return {image:p[1],size:p[2]};
+  }
   function paintGlobalBg() {
     const r = set.globalBg, it = r && byId(r.id);
-    root.classList.toggle('ll-custom-global-bg', !!it);
-    if (!it) { ['--ll-global-bg','--ll-global-bg-size','--ll-global-bg-pos'].forEach(p => root.style.removeProperty(p)); return; }
-    root.style.setProperty('--ll-global-bg', cssUrl(itemUrl(it)));
-    root.style.setProperty('--ll-global-bg-size', (r.z || 1) === 1 ? 'cover' : (100 * r.z * Math.max(1, (it.a || 1.6) / (host.innerWidth / host.innerHeight))) + '% auto');
-    root.style.setProperty('--ll-global-bg-pos', (r.x ?? 50) + '% ' + (r.y ?? 50) + '%');
-  }
+    const solid = r?.mode === 'solid' && validColor(r.color), transparent = r?.mode === 'transparent';
+    root.classList.toggle('ll-custom-global-bg', !!it || solid || transparent);
+    if (!it && !solid && !transparent) ['--ll-global-bg','--ll-global-bg-size','--ll-global-bg-pos','--ll-global-color'].forEach(p => root.style.removeProperty(p));
+    else {
+      root.style.setProperty('--ll-global-bg', solid || transparent ? 'none' : cssUrl(itemUrl(it)));
+      root.style.setProperty('--ll-global-color', solid ? r.color : 'transparent');
+      root.style.setProperty('--ll-global-bg-size', !it || (r.z || 1) === 1 ? 'cover' : (100 * r.z * Math.max(1,(it.a||1.6)/(host.innerWidth/host.innerHeight)))+'% auto');
+      root.style.setProperty('--ll-global-bg-pos',(r.x??50)+'% '+(r.y??50)+'%');
+    }
+    const b = set.bubbles || {}, effects = b.enabled && b.scope === 'global', active = effects || (r?.blur > 0);
+    root.classList.remove('ll-global-effects');
+    if (!active) { globalSurface?.remove(); globalSurface=null; return; }
+    if (!globalSurface) { globalSurface=doc.createElement('div'); globalSurface.id='ll-bg-surface'; globalSurface.setAttribute('aria-hidden','true'); doc.body.prepend(globalSurface); }
+    const native = doc.querySelector('#bg_custom') || doc.querySelector('#bg1');
+    const nativeStyle = native ? host.getComputedStyle(native) : null;
 
+    const bodyStyle = host.getComputedStyle(doc.body);
+    const sourceImage = it ? cssUrl(itemUrl(it)) : solid || transparent ? 'none' : (bodyStyle.backgroundImage !== 'none' ? bodyStyle.backgroundImage : nativeStyle?.backgroundImage || 'none');
+    root.classList.add('ll-global-effects');
+    globalSurface.style.backgroundImage=sourceImage;
+    globalSurface.style.backgroundColor=solid ? r.color : transparent ? 'transparent' : globalBaseColor();
+    globalSurface.style.backgroundSize=it ? root.style.getPropertyValue('--ll-global-bg-size') : bodyStyle.backgroundImage !== 'none' ? bodyStyle.backgroundSize : nativeStyle?.backgroundSize || 'cover';
+    globalSurface.style.backgroundPosition=it ? root.style.getPropertyValue('--ll-global-bg-pos') : bodyStyle.backgroundImage !== 'none' ? bodyStyle.backgroundPosition : nativeStyle?.backgroundPosition || 'center';
+    globalSurface.style.filter=`brightness(${effects ? clamp(b.brightness,20,180,100) : 100}%) blur(${Math.max(clamp(r?.blur,0,40),effects && b.blurEnabled !== false ? clamp(b.blur,0,40) : 0)}px)`;
+    const texture=textureOf(b);
+    globalSurface.style.setProperty('--ll-paper-image',effects && b.paper ? texture.image : 'none');
+    globalSurface.style.setProperty('--ll-paper-size',texture.size);
+    globalSurface.style.setProperty('--ll-paper-strength',effects ? clamp(b.paperStrength,0,100,12)/100 : 0);
+  }
   function paintBubbles() {
     const b = set.bubbles;
     root.classList.toggle('ll-custom-bubbles', !!b?.enabled);
-    if (!b?.enabled) { ['--ll-bubble-opacity','--ll-bubble-blur','--ll-bubble-color','--ll-bubble-brightness','--ll-bubble-paper','--ll-bubble-fill'].forEach(p => root.style.removeProperty(p)); return; }
-    const opacity = Math.min(100, Math.max(0, Number(b.opacity) || 0));
-    const blur = Math.min(40, Math.max(0, Number(b.blur) || 0));
-    root.style.setProperty('--ll-bubble-opacity', opacity + '%');
-    root.style.setProperty('--ll-bubble-blur', (b.blurEnabled === false ? 0 : blur) + 'px');
-    const brightness = Math.min(180, Math.max(20, Number(b.brightness ?? 100)));
-    root.style.setProperty('--ll-bubble-brightness', brightness + '%');
-    const base = isHex(b.color) ? b.color : 'var(--lb-paper,var(--ll-paper,var(--SmartThemeBlurTintColor,#ffffff)))';
-    const fill = brightness <= 100 ? 'color-mix(in srgb,' + base + ' ' + brightness + '%,#000)' : 'color-mix(in srgb,' + base + ' ' + (200 - brightness) + '%,#fff)';
-    root.style.setProperty('--ll-bubble-fill', fill);
-    const paper = validColor(b.paperColor) ? b.paperColor : '#847765';
-    const amount = Math.min(35, Math.max(0, Number(b.paperStrength ?? 12)));
-    root.style.setProperty('--ll-bubble-paper', b.paper ? 'radial-gradient(ellipse at 20% 30%,color-mix(in srgb,' + paper + ' ' + amount + '%,transparent) 0 0.6px,transparent 1px),radial-gradient(ellipse at 70% 60%,color-mix(in srgb,' + paper + ' ' + amount + '%,transparent) 0 0.5px,transparent 1.1px)' : 'none');
-    if (isHex(b.color)) root.style.setProperty('--ll-bubble-color', b.color); else root.style.removeProperty('--ll-bubble-color');
+    if (!b?.enabled) { ['--ll-bubble-opacity','--ll-bubble-blur','--ll-bubble-color','--ll-bubble-brightness','--ll-bubble-paper','--ll-bubble-fill','--ll-paper-strength','--ll-paper-size'].forEach(p=>root.style.removeProperty(p)); paintGlobalBg(); return; }
+    const local=b.scope !== 'global', opacity=clamp(b.opacity,0,100,100), brightness=local ? clamp(b.brightness,20,180,100) : 100;
+    const base=b.sameGlobal ? globalBaseColor() : validColor(b.color) ? b.color : 'var(--lb-paper,var(--ll-paper,var(--SmartThemeBlurTintColor,#ffffff)))';
+    const fill=brightness<=100 ? `color-mix(in srgb,${base} ${brightness}%,#000)` : `color-mix(in srgb,${base} ${200-brightness}%,#fff)`;
+    root.style.setProperty('--ll-bubble-opacity',opacity+'%');
+    root.style.setProperty('--ll-bubble-blur',(local && b.blurEnabled !== false ? clamp(b.blur,0,40) : 0)+'px');
+    root.style.setProperty('--ll-bubble-brightness',brightness+'%');
+    root.style.setProperty('--ll-bubble-fill',fill);
+    root.style.setProperty('--ll-bubble-color',base);
+    const texture=textureOf(b);
+    root.style.setProperty('--ll-bubble-paper',local && b.paper ? texture.image : 'none');
+    root.style.setProperty('--ll-paper-size',texture.size);
+    root.style.setProperty('--ll-paper-strength',local && b.paper ? clamp(b.paperStrength,0,100,12)/100 : 0);
+    paintGlobalBg();
+  }
+  function ensurePaper(mes) {
+    if (!mes.querySelector(':scope > .ll-paper-layer')) { const layer=doc.createElement('span'); layer.className='ll-paper-layer'; layer.setAttribute('aria-hidden','true'); mes.prepend(layer); }
   }
   function paintText() {
     const t = set.text || {};
@@ -333,12 +368,12 @@ function startManager() {
   }
   function paintEntries() { doc.querySelectorAll('.ll-avatar-entry').forEach(paintEntry); }
 
-  /* Theme profiles reference SillyTavern's native theme list; never overwrite the saved theme. */
   const themeStyle = doc.createElement('style'); themeStyle.id = 'll-theme-overrides';
   doc.head.append(themeStyle);
   const extrasStyle = doc.createElement('style'); extrasStyle.id = 'll-manager-extras';
   doc.head.append(extrasStyle);
   set.appearance ||= { opacity: 100, blur: 0, showFrame: false, showColor: false };
+  set.fonts ||= {enabled:false,assignments:{}};
   set.themeProfiles ||= {}; set.charThemes ||= {}; set.themeCovers ||= {};
   const themeName = () => doc.querySelector('#themes')?.value || '__current__';
   const profile = () => set.themeProfiles[themeName()] ||= { colors: {}, text: {}, exclude: 'pre, code' };
@@ -364,7 +399,7 @@ function startManager() {
     }
     catch (_) { return []; }
   }
-  /* Tokenize colors without touching URLs, quoted strings or comments. CSSOM preserves nested conditions. */
+
   function colorTokens(value) {
     const out = [];
     const re = /--[\w-]+|url\((?:[^()"']|"[^"]*"|'[^']*')*\)|"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|\/\*[\s\S]*?\*\/|#[\da-f]{3,8}\b|(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\((?:[^()]|\([^()]*\))*\)|\b[a-z]+\b/gi;
@@ -390,8 +425,8 @@ function startManager() {
   }
   function sourceSheets() {
     const custom = doc.querySelector('#custom-style');
-    // Custom CSS is the user's theme. Other readable sheets can be explicitly included.
-    return [...doc.styleSheets].filter(s => s.ownerNode !== themeStyle && s.ownerNode !== extrasStyle && s.ownerNode !== panelCss && s.ownerNode !== guard &&
+
+    return [...doc.styleSheets].filter(s => s.ownerNode !== fontStyle && s.ownerNode !== themeStyle && s.ownerNode !== extrasStyle && s.ownerNode !== panelCss && s.ownerNode !== guard &&
       (profile().allSheets || s.ownerNode === custom || s.ownerNode?.id === 'customCSS' || /custom.?style|theme/i.test(s.ownerNode?.id || '')));
   }
   function eachRule(rules, visit) {
@@ -467,7 +502,7 @@ function startManager() {
       const color = p.text?.[kind]; if (!validColor(color)) continue;
       const selector = tags ? tags.split(',').map(t => '#chat .mes .mes_text ' + t).join(',') : '#chat .mes .mes_text';
       css += selector + '{color:' + color + '!important;}';
-      // Plain paragraphs and spans that a theme colors directly should also follow body color.
+
       if (kind === 'body') css += '#chat .mes .mes_text :is(p,span,div,li):not(:is(q,blockquote,.quote,em,i,b,strong,a,code,pre,h1,h2,h3,h4,h5,h6,u)):not(:is(q,blockquote,.quote,em,i,b,strong,a,code,pre,h1,h2,h3,h4,h5,h6,u) *){color:' + color + '!important;}';
     }
     if (p.glow && validColor(p.glowColor)) css += '#chat .mes .mes_text{text-shadow:0 0 ' + clamp(p.glowSize,1,20,4) + 'px ' + p.glowColor + '!important;}';
@@ -477,13 +512,102 @@ function startManager() {
       for (const [prop, value] of Object.entries(values)) if (value) n.style.setProperty(prop, value, 'important');
     }
   }
+  const fontStyle=doc.createElement('style');fontStyle.id='ll-font-style';doc.head.append(fontStyle);
+  let fontTimer=0,fontObserver=null,fontBusy=false;
+  const fontLanguages=[['default','默认 / 其他文字'],['zh','中文'],['en','英文 / 拉丁文字'],['ja','日文'],['ko','韩文']];
+  function fontFamily(it) { return it?.kind==='font' ? '"ll-font-'+it.id.replace(/[^\w-]/g,'')+'"' : it?.family || ''; }
+  function fontFor(lang) { const it=byId(set.fonts?.assignments?.[lang]) || byId(set.fonts?.assignments?.default);return fontFamily(it); }
+  function restoreFontRuns() {
+    fontBusy=true;fontObserver?.disconnect();
+    doc.querySelectorAll('.ll-font-run').forEach(span=>{const parent=span.parentNode;span.replaceWith(doc.createTextNode(span.textContent));parent?.normalize();});
+    fontBusy=false;
+  }
+  function applyFontRuns() {
+    if(dead || fontBusy || !set.fonts?.enabled || !Object.values(set.fonts.assignments || {}).some(Boolean))return;
+    fontBusy=true;fontObserver?.disconnect();
+    const walker=doc.createTreeWalker(doc.body,host.NodeFilter.SHOW_TEXT);const nodes=[];
+    while(walker.nextNode()){
+      const n=walker.currentNode,p=n.parentElement;
+      if(!n.nodeValue?.trim() || !p || p.closest('script,style,textarea,input,select,option,svg,canvas,.ll-font-run,[contenteditable="true"],[class*="fa-"],.fa,.fas,.far,.fab'))continue;
+      nodes.push(n);
+    }
+    for(const node of nodes){
+      const language=node.parentElement.closest('[lang]')?.getAttribute('lang')?.toLowerCase();
+      const forced=language?.startsWith('ja') ? 'ja' : language?.startsWith('ko') ? 'ko' : null;
+      const runs=node.nodeValue.match(/[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\u3000-\u303f\uff00-\uffef]+|[\p{Script=Latin}\d]+(?:[ '\u2019\u201c\u201d.,!?;:\-]+[\p{Script=Latin}\d]+)*|[\p{Script=Hangul}]+|[^\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Latin}\p{Script=Hangul}\d]+/gu) || [];
+      const fragment=doc.createDocumentFragment();let changed=false;
+      for(const run of runs){
+        const lang=/[\p{Script=Hiragana}\p{Script=Katakana}]/u.test(run)?'ja':/[\p{Script=Han}]/u.test(run)?forced||'zh':/[\p{Script=Hangul}]/u.test(run)?'ko':/[\p{Script=Latin}\d]/u.test(run)?'en':'default';
+        const family=fontFor(lang);
+        if(!family){fragment.append(doc.createTextNode(run));continue;}
+        const span=doc.createElement('span');span.className='ll-font-run';span.dataset.language=lang;span.style.setProperty('font-family',family,'important');span.textContent=run;fragment.append(span);changed=true;
+      }
+      if(changed)node.replaceWith(fragment);
+    }
+    fontBusy=false;
+    fontObserver?.observe(doc.body,{subtree:true,childList:true,characterData:true});
+  }
+  function queueFonts() { if(fontBusy || dead)return;host.clearTimeout(fontTimer);fontTimer=host.setTimeout(()=>{fontTimer=0;applyFontRuns();},180); }
+  function paintFonts() {
+    if(!fontStyle || dead)return;
+    restoreFontRuns();fontStyle.textContent='';
+    if(!set.fonts?.enabled)return;
+    let css='';
+    for(const it of lib.filter(x=>x.kind==='font'||x.kind==='fontCss')){
+      if(it.kind==='font')css+='@font-face{font-family:'+fontFamily(it)+';src:'+cssUrl(itemUrl(it))+';font-display:swap;}';
+      else css+=it.css || '';
+    }
+    const fallback=fontFor('default') || fontFor('zh') || fontFor('en') || fontFor('ja');
+    if(fallback)css+=`html:root body{--mainFontFamily:${fallback};--lb-font:${fallback};font-family:${fallback}!important}html:root body :is(input,textarea,button,select){font-family:${fallback}!important}html:root body [lang^="ja"]{font-family:${fontFor('ja')||fallback}!important}html:root body [lang^="en"]{font-family:${fontFor('en')||fallback}!important}html:root body [lang^="zh"]{font-family:${fontFor('zh')||fallback}!important}`;
+    fontStyle.textContent=css;applyFontRuns();
+    fontObserver ||= new host.MutationObserver(queueFonts);fontObserver.observe(doc.body,{subtree:true,childList:true,characterData:true});
+  }
+  function parseFontCss(text) {
+    const sheet=new host.CSSStyleSheet();sheet.replaceSync(text);
+    let family='',css='';
+    for(const rule of sheet.cssRules){
+      if(rule.type===5){css+=rule.cssText+'\n';family ||= rule.style.getPropertyValue('font-family');}
+      else if(rule.style)family ||= rule.style.getPropertyValue('font-family');
+    }
+    if(!family){const inline=new host.CSSStyleSheet();inline.replaceSync(':root{'+text+'}');family=inline.cssRules[0]?.style.getPropertyValue('font-family') || '';}
+    if(!family || !host.CSS.supports('font-family',family))throw Error('没有读到字体名称，请粘贴 @font-face 或 font-family 代码。');
+    return {css,family};
+  }
+
   function paintAppearance() {
     const a = set.appearance;
+    if (extrasStyle !== doc.head.lastElementChild) doc.head.append(extrasStyle);
+    doc.querySelectorAll('.ll-mgr-card').forEach(n=>n.style.setProperty('opacity',clamp(a.opacity,25,100,100)/100,'important'));
     extrasStyle.textContent = `
-.ll-mgr-card{background:color-mix(in srgb,var(--ll-panel-paper,#fff) ${clamp(a.opacity,0,100,100)}%,transparent)!important;backdrop-filter:blur(${clamp(a.blur,0,40)}px)!important;-webkit-backdrop-filter:blur(${clamp(a.blur,0,40)}px)!important}
+html:root body .ll-mgr .ll-mgr-card{opacity:${clamp(a.opacity,25,100,100)/100}!important;background:color-mix(in srgb,var(--ll-panel-paper,#fff) ${clamp(a.opacity,25,100,100)}%,transparent)!important;backdrop-filter:blur(${clamp(a.blur,0,40)}px)!important;-webkit-backdrop-filter:blur(${clamp(a.blur,0,40)}px)!important}
+.ll-mgr::backdrop{background:rgba(0,0,0,${clamp(a.opacity,25,100,100)/100*.15})!important}
 .ll-mgr [data-t="frame"]{display:${a.showFrame ? 'block' : 'none'}!important}
 .ll-mgr [data-t="color"]{display:${a.showColor ? 'block' : 'none'}!important}
 ${a.showColor ? '' : '.ll-ink-toggle{display:none!important}'}
+html:root body .ll-mgr .ll-theme-actions{display:grid!important;grid-template-columns:1fr 2fr!important;width:100%!important;gap:6px!important}
+html:root body .ll-mgr .ll-theme-actions button{width:100%!important;padding:8px 3px!important}
+html:root body .ll-mgr .ll-theme-actions input{display:none!important}
+html:root body .ll-mgr .ll-theme-actions button:nth-of-type(3){grid-column:1/-1}
+.ll-theme-cover{cursor:pointer}
+html:root body #chat .mes .avatar.ll-custom-avatar-bg{position:relative!important;background-image:none!important}
+html:root body #chat .mes .avatar.ll-custom-avatar-bg > .ll-avatar-bg-layer{position:absolute!important;inset:-2px!important;pointer-events:none!important;background-image:var(--ll-av-bg)!important;background-color:var(--ll-av-color,transparent)!important;background-size:var(--ll-av-bg-size,cover)!important;background-position:var(--ll-av-bg-pos,center)!important;filter:blur(var(--ll-av-bg-blur,0px))!important;z-index:0!important}
+html:root body #chat .mes .avatar.ll-custom-avatar-bg > img{position:relative;z-index:1}
+html:root.ll-custom-bubbles body #chat .mes > .ll-paper-layer{display:block!important;position:absolute!important;inset:0!important;pointer-events:none!important;z-index:0!important;border-radius:inherit!important;background-image:var(--ll-bubble-paper,none)!important;background-size:var(--ll-paper-size,auto)!important;opacity:var(--ll-paper-strength,0)!important;mix-blend-mode:multiply!important}
+html:root body #chat .mes:not(.ll-custom-bubbles) > .ll-paper-layer{pointer-events:none}
+html:root:not(.ll-custom-bubbles) body .ll-paper-layer{display:none!important}
+html:root.ll-global-effects body{background-image:none!important;background-color:transparent!important;isolation:isolate}
+html:root.ll-global-effects body :is(#bg1,#bg_custom){visibility:hidden!important}
+#ll-bg-surface{position:fixed!important;inset:-50px!important;z-index:-1!important;pointer-events:none!important;background-repeat:no-repeat!important}
+#ll-bg-surface::after{content:'';position:absolute;inset:0;pointer-events:none;background-image:var(--ll-paper-image);background-size:var(--ll-paper-size);opacity:var(--ll-paper-strength);mix-blend-mode:multiply}
+.ll-exclusions-row{display:flex;gap:8px;align-items:center;width:100%;margin:10px 0}
+.ll-exclusions-row input{flex:1!important;min-width:0!important;width:0}
+.ll-exclusions-row button{flex:0 0 auto!important;white-space:nowrap}
+.ll-color-place{display:flex;flex-direction:column;flex:1;min-width:110px;overflow-wrap:anywhere}
+.ll-color-place small{font-size:11px;opacity:.8}
+.ll-font-list{display:grid;gap:8px}
+.ll-font-item{display:flex;align-items:center;gap:8px;border-bottom:1px dashed var(--ll-panel-line);padding:8px 0}
+.ll-font-item span{flex:1;overflow-wrap:anywhere}
+.ll-mgr textarea{width:100%;min-height:100px;background:var(--ll-panel-paper);color:inherit;border:1px solid var(--ll-panel-line);font:inherit}
 .ll-theme-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
 .ll-theme-card{border:1px solid var(--ll-panel-line,#aaa);border-radius:12px;overflow:hidden;min-width:0;padding:0 0 10px}
 .ll-theme-card.on{outline:2px solid var(--ll-panel-ink,#333);outline-offset:1px}
@@ -494,11 +618,13 @@ ${a.showColor ? '' : '.ll-ink-toggle{display:none!important}'}
 .ll-color-row{display:flex;align-items:center;gap:8px;margin:9px 0;flex-wrap:wrap}
 .ll-color-row>label{flex:1;min-width:120px;overflow-wrap:anywhere}
 .ll-color-row input{max-width:190px}
-.ll-mgr .ll-color-chip{width:38px;height:32px;flex:none;border-radius:6px;background:var(--chip)!important}
+html:root body .ll-mgr .ll-mgr-card .ll-color-row .ll-color-chip{width:38px;height:32px;flex:none;border-radius:6px;background:var(--chip)!important}
 .ll-picker{flex-basis:100%;width:100%;border:1px solid var(--ll-panel-line,#aaa);padding:12px;margin:10px 0;display:grid;justify-items:center;gap:8px}
 .ll-picker canvas{max-width:100%;touch-action:none}
 .ll-mgr .ll-theme-search{width:100%;margin-bottom:12px}
 .ll-theme-notice{padding:8px;border:1px dashed var(--ll-panel-line,#aaa);margin:8px 0;white-space:pre-wrap}
+.ll-mgr .ll-tip{display:none!important}
+html:root.ll-custom-bubbles body #chat .mes > :is(.mes_block,.mesAvatarWrapper){z-index:1!important}
 .ll-mgr details>summary{cursor:pointer;padding:8px 0}
 @media(min-width:700px){.ll-mgr:has([data-t="themes"].on) .ll-mgr-card,.ll-mgr:has([data-t="text"].on) .ll-mgr-card{width:min(92vw,940px)!important}}
 `;
@@ -530,7 +656,7 @@ ${a.showColor ? '' : '.ll-ink-toggle{display:none!important}'}
   let contextEvents, chatEvent, messageEvent;
   function startThemes() {
     themeReady = true; paintAppearance();
-    // Migrate the previous global text controls once, without keeping a second overriding layer.
+
     if (!set.themeTextMigrated) {
       const p = profile(), old = set.text || {};
       if (old.colorEnabled && validColor(old.color)) p.text.body = old.color;
@@ -542,7 +668,7 @@ ${a.showColor ? '' : '.ll-ink-toggle{display:none!important}'}
     if (chatEvent) contextEvents?.on?.(chatEvent, onChatTheme);
     if (messageEvent) contextEvents?.on?.(messageEvent, queueThemePaint);
     doc.addEventListener('change', onThemeSelect);
-    // A cheap signature check also covers older ST and jQuery-triggered theme changes.
+
     const poll = () => {
       if (dead) return;
       checkCharacterTheme();
@@ -552,7 +678,7 @@ ${a.showColor ? '' : '.ll-ink-toggle{display:none!important}'}
     };
     const chat = doc.querySelector('#chat');
     if (chat) { themeObserver = new host.MutationObserver(records => { if (records.some(r => [...r.addedNodes].some(n => n.nodeType === 1))) queueThemePaint(); }); themeObserver.observe(chat, {childList:true,subtree:true}); }
-    poll(); paintTheme();
+    poll(); paintTheme();paintFonts();doc.addEventListener('input',queueFonts);
   }
   function onChatTheme() { checkCharacterTheme(true); queueThemePaint(); }
   function onThemeSelect(e) { if (e.target?.id === 'themes') queueThemePaint(); }
@@ -561,22 +687,21 @@ ${a.showColor ? '' : '.ll-ink-toggle{display:none!important}'}
     if (chatEvent) contextEvents?.removeListener?.(chatEvent, onChatTheme);
     if (messageEvent) contextEvents?.removeListener?.(messageEvent, queueThemePaint);
     doc.removeEventListener('change', onThemeSelect);
-    themeObserver?.disconnect();
+    themeObserver?.disconnect();fontObserver?.disconnect();doc.removeEventListener('input',queueFonts);host.clearTimeout(fontTimer);restoreFontRuns();fontStyle.remove();globalSurface?.remove();
     restoreExcluded(); themeStyle.remove(); extrasStyle.remove();
   }
 
-  /* 面板样式 */
   const panelCss = doc.createElement('style');
   panelCss.textContent = `
 html:root body #chat .mes .ll-avatar-entry{display:inline-flex!important;position:static!important;visibility:visible!important;opacity:1!important;align-items:center;justify-content:center;flex:0 0 auto!important;width:auto!important;min-width:28px!important;max-width:150px!important;height:var(--ll-entry-size,22px)!important;min-height:28px!important;white-space:nowrap!important;overflow:hidden!important;text-overflow:ellipsis!important;margin:0 3px!important;padding:0!important;border:0!important;border-radius:4px!important;background:transparent!important;color:inherit!important;font:var(--ll-entry-size,22px)/1 sans-serif!important;cursor:pointer!important;pointer-events:auto!important;z-index:5!important;transform:none!important}
 html:root body #chat .mes .ll-avatar-entry::before,html:root body #chat .mes .ll-avatar-entry::after{content:none!important}
 html:root body #chat .mes .ll-avatar-entry:hover{background:rgba(128,128,128,.15)!important}
-html:root body #chat .mes .avatar.ll-custom-avatar-bg{background-image:var(--ll-av-bg)!important;background-size:var(--ll-av-bg-size,cover)!important;background-position:var(--ll-av-bg-pos,center)!important;background-repeat:no-repeat!important}
-html:root.ll-custom-global-bg body{background-image:var(--ll-global-bg)!important;background-size:var(--ll-global-bg-size,cover)!important;background-position:var(--ll-global-bg-pos,center)!important;background-repeat:no-repeat!important;background-attachment:fixed!important}
+html:root body #chat .mes .avatar.ll-custom-avatar-bg{background-image:var(--ll-av-bg)!important;background-color:var(--ll-av-color,transparent)!important;background-size:var(--ll-av-bg-size,cover)!important;background-position:var(--ll-av-bg-pos,center)!important;background-repeat:no-repeat!important}
+html:root.ll-custom-global-bg body{background-image:var(--ll-global-bg)!important;background-color:var(--ll-global-color,transparent)!important;background-size:var(--ll-global-bg-size,cover)!important;background-position:var(--ll-global-bg-pos,center)!important;background-repeat:no-repeat!important;background-attachment:fixed!important}
 html:root.ll-custom-global-bg body :is(#bg1,#bg_custom){background-image:none!important;background-color:transparent!important}
 html:root body #chat .mes .ll-avatar-entry > img{display:block!important;position:static!important;width:var(--ll-entry-size,22px)!important;height:var(--ll-entry-size,22px)!important;max-width:none!important;max-height:none!important;object-fit:contain!important;border:0!important;border-radius:0!important;background:transparent!important;pointer-events:none!important;padding:0!important;margin:0!important;filter:none!important}
 html:root.ll-custom-bubbles body :is(#sheld,#chat){background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
-html:root.ll-custom-bubbles body #chat .mes{background-color:color-mix(in srgb,var(--ll-bubble-fill) var(--ll-bubble-opacity,100%),transparent)!important;background-image:var(--ll-bubble-paper,none)!important;background-size:5px 7px,7px 11px!important;backdrop-filter:blur(var(--ll-bubble-blur,0px)) brightness(var(--ll-bubble-brightness,100%))!important;-webkit-backdrop-filter:blur(var(--ll-bubble-blur,0px)) brightness(var(--ll-bubble-brightness,100%))!important}
+html:root.ll-custom-bubbles body #chat .mes{background-color:color-mix(in srgb,var(--ll-bubble-fill) var(--ll-bubble-opacity,100%),transparent)!important;background-image:none!important;position:relative!important;backdrop-filter:blur(var(--ll-bubble-blur,0px)) brightness(var(--ll-bubble-brightness,100%))!important;-webkit-backdrop-filter:blur(var(--ll-bubble-blur,0px)) brightness(var(--ll-bubble-brightness,100%))!important}
 html:root.ll-custom-bubbles body #chat .mes > .mes_block,html:root.ll-custom-bubbles body #chat .mes .mes_text,html:root.ll-custom-bubbles body #chat .mes > .mesAvatarWrapper{background:transparent!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important}
 .ll-grid>div.icon{background-size:contain!important;background-repeat:no-repeat}
 .ll-mgr-preview-entry{display:flex;align-items:center;justify-content:center;min-height:48px;padding:8px;border:1px dashed var(--ll-panel-line,#ccc)}
@@ -637,7 +762,7 @@ html:root.ll-custom-bubbles body #chat .mes > .mes_block,html:root.ll-custom-bub
 .ll-hex{width:7.5em;flex:none!important}
 .ll-frame-host{position:relative!important;overflow:visible!important}
 .ll-frame-over{position:absolute;left:50%;top:50%;z-index:9;aspect-ratio:1/1;pointer-events:none;background:center/contain no-repeat}
-/* v0.26：管理器跟随主题，标签一行滑动，原生音符滑条覆盖主题的隐藏规则。 */
+
 html:root body .ll-mgr{
  --ll-panel-paper:var(--lb-paper,var(--ll-paper,var(--SmartThemeBlurTintColor,#ffffff)));
  --ll-panel-ink:var(--lb-ink,var(--ll-ink,var(--SmartThemeBodyColor,#222222)));
@@ -667,7 +792,6 @@ html:root.ll-custom-text-color body #chat .mes_text,html:root.ll-custom-text-col
 html:root.ll-custom-text-glow body #chat .mes_text,html:root.ll-custom-text-glow body #chat .mes_text :is(p,span,div,a,li,ul,ol,dl,dt,dd,strong,b,em,i,q,u,s,del,ins,blockquote,code,pre,h1,h2,h3,h4,h5,h6,table,thead,tbody,tr,th,td,summary,label,small,sub,sup){text-shadow:0 0 var(--ll-text-glow-size) var(--ll-text-glow-color),0 0 calc(var(--ll-text-glow-size) * 2) var(--ll-text-glow-color)!important}
 html:root body .ll-mgr input[type=color]{display:block!important;width:40px!important;min-width:40px!important;height:30px!important;flex:0 0 auto!important;padding:2px!important;background:var(--ll-panel-paper)!important;border:1px solid var(--ll-panel-line)!important;border-radius:0!important;cursor:pointer}
 
-/* v0.28 · 白川：按可见屏幕比例排版，只有内容区滚动，关闭键常驻底部。 */
 html:root body .ll-mgr{inset:auto!important;left:var(--ll-mgr-vx,0px)!important;top:var(--ll-mgr-vy,0px)!important;width:var(--ll-mgr-vw,100vw)!important;height:var(--ll-mgr-vh,100dvh)!important;min-height:0!important;overflow:hidden!important;padding:max(1vh,env(safe-area-inset-top,0px)) max(1vw,env(safe-area-inset-right,0px)) max(1vh,env(safe-area-inset-bottom,0px)) max(1vw,env(safe-area-inset-left,0px))!important}
 html:root body .ll-mgr .ll-mgr-card{display:flex!important;flex-direction:column!important;width:92%!important;max-width:92%!important;height:88%!important;max-height:88%!important;min-width:0!important;min-height:0!important;overflow:hidden!important;padding:clamp(8px,1.5vmin,18px)!important;margin:auto!important;box-sizing:border-box!important}
 html:root body .ll-mgr .ll-mgr-card > h3,html:root body .ll-mgr .ll-mgr-card > .ll-row,html:root body .ll-mgr .ll-mgr-tabs{flex:0 0 auto!important}
@@ -682,7 +806,6 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
 `;
   doc.head.append(panelCss);
 
-  /* 读图：链接直接用；本地图压缩后存成 Blob */
   const loadImg = src => new Promise((res, rej) => { const im = new host.Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
   const readFile = f => new Promise(res => { const r = new host.FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
   async function shrink(dataUrl, max, type) {
@@ -714,14 +837,14 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
     ['pointerup', 'pointercancel'].forEach(t => box.addEventListener(t, () => { drag = null; }));
     return draw;
   }
-  /* 按裁剪框切出方形头像（只有本地图 / 允许跨域的图能切） */
+
   async function cropRect(st, A, png) {
     const im = await loadImg(st.src);
-    const Wd = st.z * Math.max(1, st.a / A), Hd = Wd / st.a;          // 以裁剪框宽为 1
+    const Wd = st.z * Math.max(1, st.a / A), Hd = Wd / st.a;
     const ox = (1 - Wd) * st.x / 100, oy = (1 / A - Hd) * st.y / 100;
     const nw = im.naturalWidth, nh = im.naturalHeight;
-    const sw = nw / Wd, sh = (1 / A) / Hd * nh;                        // 源图上被框住的像素
-    const long = Math.min(1600, Math.max(sw, sh));                     // 不放大，最长 1600px
+    const sw = nw / Wd, sh = (1 / A) / Hd * nh;
+    const long = Math.min(1600, Math.max(sw, sh));
     const c = doc.createElement('canvas');
     c.width = Math.round(A >= 1 ? long : long * A); c.height = Math.round(A >= 1 ? long / A : long);
     const g = c.getContext('2d'); g.imageSmoothingQuality = 'high';
@@ -729,8 +852,6 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
     return new Promise((r, j) => { try { c.toBlob(r, png ? 'image/png' : 'image/jpeg', .93); } catch (e) { j(e); } });
   }
 
-  /* 当前聊天里有哪些头像 */
-  /* 从头像地址推出原图地址（缩略图 → 原图），用来重新裁剪 */
   function originalOf(src) {
     try {
       const u = new URL(src, host.location.href), f = u.searchParams.get('file');
@@ -754,7 +875,8 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
     const seen = new Map();
     currentOwners().forEach(o => seen.set(o.key, o));
     doc.querySelectorAll('#chat > .mes').forEach(mes => {
-      const av = mes.querySelector('.avatar'); const k = keyOf(av); if (!k || seen.has(k)) return;
+      ensurePaper(mes);
+    const av = mes.querySelector('.avatar'); const k = keyOf(av); if (!k || seen.has(k)) return;
       const o = seen.get(k) || {};
       seen.set(k, { ...o, key: k, name: o.name || mes.querySelector('.name_text')?.textContent.trim() || k, user: mes.getAttribute('is_user') === 'true', avatar: av, src: av.querySelector('img')?.dataset.llOrig || av.querySelector('img')?.getAttribute('src') });
     });
@@ -787,14 +909,14 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
     wrap.innerHTML = `<div class="ll-mgr-card" role="dialog" aria-label="头像管理">
 <h3>♪ 𝒶𝓋𝒶𝓉𝒶𝓇 & 𝒷𝒶𝒸𝓀𝑔𝓇ℴ𝓊𝓃𝒹</h3>
 <div class="ll-row"><span>给谁</span><select class="who"></select></div>
-<div class="ll-mgr-tabs"><button data-t="avatar">头像</button><button data-t="frame">头像框</button><button data-t="color">颜色</button><button data-t="bg">头像区域背景</button><button data-t="globalBg">全局背景</button><button data-t="bubbles">气泡</button><button data-t="themes">美化绑定</button><button data-t="text">主题色</button><button data-t="lib">本地库</button><button data-t="entry">设置</button></div>
+<div class="ll-mgr-tabs"><button data-t="themes">美化绑定</button><button data-t="avatar">头像</button><button data-t="frame">头像框</button><button data-t="color">颜色</button><button data-t="bg">头像区域背景</button><button data-t="globalBg">全局背景</button><button data-t="bubbles">气泡</button><button data-t="fonts">字体</button><button data-t="text">主题色</button><button data-t="lib">本地库</button><button data-t="entry">设置</button></div>
 <div class="pane"></div>
 <div class="ll-row ll-mgr-footer"><button type="button" class="close">关闭</button></div></div>`;
     const $ = s => wrap.querySelector(s), pane = $('.pane'), who = $('.who');
     who.innerHTML = list.map(a => `<option value="${encodeURIComponent(a.key)}">${a.user ? '👤 ' : '♪ '}${a.name.replace(/</g, '&lt;')}${a.current ? '（当前）' : ''}</option>`).join('') || '<option value="">（当前聊天没有头像）</option>';
     who.value = encodeURIComponent(key);
     who.onchange = () => { key = decodeURIComponent(who.value); render(tab); };
-    let tab = startTab || 'avatar';
+    let tab = startTab || 'themes';
     wrap.querySelectorAll('.ll-mgr-tabs button').forEach(b => b.onclick = () => { render(b.dataset.t); b.scrollIntoView({ block: 'nearest', inline: 'nearest' }); });
     const closeManager = () => { wrap.llCleanupViewport?.(); if (wrap.open) wrap.close(); wrap.remove(); };
     $('.close').onclick = closeManager;
@@ -840,7 +962,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       lib.filter(x => x.kind === kind).forEach(it => {
         const d = doc.createElement('div'); if (kind === 'frame' || kind === 'icon') d.classList.add(kind);
         if (it.id === selectedId) d.classList.add('on');
-        d.style.backgroundImage = cssUrl(itemUrl(it)); d.title = it.name || '';
+        if(it.kind==='font'||it.kind==='fontCss'){d.textContent=it.name;}else d.style.backgroundImage = cssUrl(itemUrl(it)); d.title = it.name || '';
         d.dataset.id = it.id; d.onclick = () => onPick(it.id); g.append(d);
       });
       return g;
@@ -850,10 +972,11 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       tab = t; pane.textContent = '';
       wrap.querySelectorAll('.ll-mgr-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
       const a = cur();
-      if (!a && !['lib', 'globalBg', 'bubbles', 'entry', 'text', 'themes'].includes(t)) { pane.innerHTML = '<p class="ll-tip">当前聊天里还没有头像。</p>'; return; }
-      if (t === 'avatar') renderAvatar(a); else if (t === 'frame') renderFrame(a); else if (t === 'color') renderColor(a); else if (t === 'bg' || t === 'globalBg') renderBg(a, t === 'globalBg'); else if (t === 'bubbles') renderBubbles(); else if (t === 'entry') renderEntry(); else if (t === 'text') renderThemeColors(); else if (t === 'themes') renderThemes(); else renderLib();
+      if (!a && !['lib', 'globalBg', 'bubbles', 'entry', 'text', 'themes', 'fonts'].includes(t)) { pane.innerHTML = '<p class="ll-tip">当前聊天里还没有头像。</p>'; return; }
+      if (t === 'avatar') renderAvatar(a); else if (t === 'frame') renderFrame(a); else if (t === 'color') renderColor(a); else if (t === 'bg' || t === 'globalBg') renderBg(a, t === 'globalBg'); else if (t === 'bubbles') renderBubbles(); else if (t === 'entry') renderEntry(); else if (t === 'fonts') renderFontPage(); else if (t === 'text') renderThemeColors(); else if (t === 'themes') renderThemes(); else renderLib();
+      pane.querySelectorAll('.ll-tip').forEach(n=>n.remove());
     }
-    /* 头像 */
+
     function renderAvatar(a) {
       pane.append(Object.assign(doc.createElement('div'), { className: 'll-tip', textContent: '换头像在任何美化里都有效（只改显示，不改角色卡）。裁剪框是长方形，中间的圆是圆形头像美化会显示的部分。' }));
       pane.append(fold('本地库里的头像', libGrid('avatar', set.avatar[key], id => { set.avatar[key] = id; saveSet(); paintAll(); render('avatar'); })));
@@ -877,7 +1000,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       zoom.oninput = () => { st.z = +zoom.value; draw(); };
       const onPick = p => {
         Object.assign(st, { blob: null, url: '', name: '' }, p, { z: 1, x: 50, y: 50, png: !!(p.blob && p.blob.type === 'image/png') }); zoom.value = 1;
-        setMode(p.a < .95 ? 'v' : p.a > 1.05 ? 'h' : 's');                // 竖图自动用竖框
+        setMode(p.a < .95 ? 'v' : p.a > 1.05 ? 'h' : 's');
       };
       const grabRow = doc.createElement('div'); grabRow.className = 'll-row';
       const grab = Object.assign(doc.createElement('button'), { type: 'button', className: 'pri', textContent: '抓取 ' + (a.name || '') + ' 的原头像' });
@@ -899,13 +1022,13 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
         if (!st.src) return;
         const A = RATIO[mode]; let item;
         try { item = await libAdd({ kind: 'avatar', name: st.name || '头像', blob: await cropRect(st.blob ? st : { ...st, src: st.url }, A, st.png), a: A }); }
-        catch (_) { item = await libAdd({ kind: 'avatar', name: '链接头像', url: st.url, a: st.a }); } // 跨域图不能裁，直接用
+        catch (_) { item = await libAdd({ kind: 'avatar', name: '链接头像', url: st.url, a: st.a }); }
         set.avatar[key] = item.id; saveSet(); paintAll(); render('avatar');
       };
       pane.append(btns);
       setMode('h');
     }
-    /* 头像框：预览就是聊天里真实的方框比例，头像在左（char）或右（user） */
+
     function renderFrame(a) {
       const r = { id: 'auto', s: 1.36, dx: 0, dy: 0, ...(set.frame[key] || set.frame['*'] || {}) };
       pane.append(fold('选一个框（音符框置顶）', libGrid('frame', r.id, id => { r.id = id; commit(); render('frame'); }, true)));
@@ -918,7 +1041,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       if (bgv) { prev.style.backgroundImage = bgv; prev.style.backgroundSize = a.avatar.style.getPropertyValue('--ll-av-bg-size'); prev.style.backgroundPosition = a.avatar.style.getPropertyValue('--ll-av-bg-pos'); }
       const face = doc.createElement('img'); face.src = a.avatar?.querySelector('img')?.getAttribute('src') || a.src || '';
       const ring = doc.createElement('i'); prev.append(face, ring);
-      const D = 32.07, CY = 44.46, CX = a.user ? 73 : 27, HA = BOX_A;   // 圆的直径（占内框宽%）、圆心
+      const D = 32.07, CY = 44.46, CX = a.user ? 73 : 27, HA = BOX_A;
       face.style.width = D + '%'; face.style.aspectRatio = '1'; face.style.left = (CX - D / 2) + '%'; face.style.top = `calc(${CY}% - ${D / 2 * HA}%)`;
       const ringStyle = () => {
         const w = a.avatar ? host.getComputedStyle(a.avatar.parentElement) : { getPropertyValue: () => '' };
@@ -946,7 +1069,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       let drag = null;
       prev.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, dx: r.dx, dy: r.dy }; try { prev.setPointerCapture(e.pointerId); } catch (_) {} });
       prev.addEventListener('pointermove', e => {
-        if (!drag) return; const d = prev.clientWidth * D / 100;           // 头像直径（像素）
+        if (!drag) return; const d = prev.clientWidth * D / 100;
         r.dx = Math.max(-60, Math.min(60, drag.dx + (e.clientX - drag.x) / d * 100));
         r.dy = Math.max(-60, Math.min(60, drag.dy + (e.clientY - drag.y) / d * 100));
         xIn.value = r.dx; yIn.value = r.dy; show(); commit();
@@ -967,7 +1090,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       allBox.onchange = commit;
       ringStyle(); show();
     }
-    /* 颜色：环形色相 + 中间方形的饱和度 / 明度 */
+
     function renderColor(a) {
       const PAL_KEY = 'lili-color-palette';
       let pal = []; try { pal = JSON.parse(host.localStorage.getItem(PAL_KEY) || '[]'); } catch (_) {}
@@ -981,7 +1104,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       const toHex = ({ h, s, v }) => { const f = n => { const k = (n + h / 60) % 6; return v - v * s * Math.max(0, Math.min(k, 4 - k, 1)); };
         return '#' + [f(5), f(3), f(1)].map(x => Math.round(x * 255).toString(16).padStart(2, '0')).join(''); };
       let hsv = toHsv(hex);
-      const S = 240, R1 = 120, R0 = 100, SQ = Math.floor(R0 * Math.SQRT2) - 8;     // 外环半径、内环半径、方块边长
+      const S = 240, R1 = 120, R0 = 100, SQ = Math.floor(R0 * Math.SQRT2) - 8;
       const cv = doc.createElement('canvas'); cv.className = 'll-wheel';
       const dpr = host.devicePixelRatio || 1; cv.width = cv.height = S * dpr; cv.style.width = cv.style.height = S + 'px';
       const g = cv.getContext('2d'); g.scale(dpr, dpr);
@@ -1044,17 +1167,24 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       pane.append(fold('色板（预设 + 存下的颜色）', sws));
       sync(); drawSw();
     }
-    /* 背景 */
+
     function renderBg(a, global = false) {
       const bgTab = global ? 'globalBg' : 'bg';
       const r0 = global ? set.globalBg : (set.bg[key] || set.bg['*']);
+      const solidPanel=doc.createElement('div');
+      const storeBackground=rec=>{if(global)set.globalBg=rec;else if(all.querySelector('input').checked){set.bg['*']=rec;delete set.bg[key];}else set.bg[key]=rec;saveSet();paintAll();};
+      const currentColor=r0?.sameGlobal?globalBaseColor():validColor(r0?.color)?r0.color:globalBaseColor();
+      solidPanel.append(button('纯色背景',()=>{storeBackground({mode:'solid',color:currentColor,blur:r0?.blur||0});render(bgTab);}));
+      if(!global)solidPanel.append(button('与全局背景同色',()=>{storeBackground({mode:'solid',sameGlobal:true,blur:r0?.blur||0});render(bgTab);}));
+      colorRow(solidPanel,global?'全局底色':'头像区域底色',currentColor,v=>storeBackground({mode:'solid',color:v,blur:r0?.blur||0}),()=>{if(global)delete set.globalBg;else delete set.bg[key];saveSet();paintAll();render(bgTab);},global?'全局背景':'头像区域背景');
+      rangeRow(solidPanel,'背景模糊',r0?.blur||0,0,40,'px',v=>storeBackground({...r0,blur:v}));pane.append(solidPanel);
       const st = { src: '', a: 1.6, z: 1, x: 50, y: 50, id: '' };
       if (r0 && byId(r0.id)) { const it = byId(r0.id); Object.assign(st, { src: itemUrl(it), a: it.a || 1.6, z: r0.z || 1, x: r0.x ?? 50, y: r0.y ?? 50, id: it.id }); }
       const pickBg = id => {
         const it = byId(id); Object.assign(st, { id, src: itemUrl(it), a: it.a || 1.6, z: 1, x: 50, y: 50 }); zoom.value = 1; draw();
         grid.querySelectorAll('div').forEach(d => d.classList.toggle('on', d.dataset.id === id));
       };
-      let grid = libGrid('bg', st.id, pickBg); pane.append(fold('本地库里的背景', grid));
+      let grid = libGrid('bg', st.id, pickBg); pane.append(fold('本地库里的背景', grid,false));
       pane.append(addRow('bg', async p => {
         const item = await libAdd({ kind: 'bg', name: p.name || '背景', blob: p.blob, url: p.blob ? undefined : p.url, a: p.a });
         const ng = libGrid('bg', item.id, pickBg); grid.replaceWith(ng); grid = ng; pickBg(item.id);
@@ -1076,47 +1206,35 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       right.querySelector('.clear').onclick = () => { if (global) delete set.globalBg; else { if (all.querySelector('input').checked) delete set.bg['*']; delete set.bg[key]; } saveSet(); paintAll(); render(bgTab); };
       right.querySelector('.save').onclick = () => {
         if (!st.id) return;
-        const rec = { id: st.id, z: +st.z.toFixed(3), x: +st.x.toFixed(2), y: +st.y.toFixed(2) };
+        const rec = { mode:'image',blur:r0?.blur||0,id: st.id, z: +st.z.toFixed(3), x: +st.x.toFixed(2), y: +st.y.toFixed(2) };
         if (global) set.globalBg = rec; else if (all.querySelector('input').checked) { set.bg['*'] = rec; delete set.bg[key]; } else set.bg[key] = rec;
         saveSet(); paintAll(); render(bgTab);
       };
+      const transparent=button('完全透明',()=>{storeBackground({mode:'transparent'});render(bgTab);});transparent.className='ll-bottom-actions';pane.append(transparent);
       host.requestAnimationFrame(draw);
     }
     function renderBubbles() {
-      const b = set.bubbles || { enabled: false, opacity: 100, blur: 0 };
-      pane.innerHTML = `<div class="ll-tip">调整所有楼层的背景，不会把文字和头像变淡。修改后立即保存。</div>
-<label><input type="checkbox" class="bubble-enabled"> 自定义楼层气泡</label>
-<div class="ll-row"><label for="ll-bubble-opacity-input">气泡不透明度</label><input id="ll-bubble-opacity-input" class="bubble-opacity" type="range" min="0" max="100" step="1"><output class="opacity-value"></output></div>
-<div class="ll-row"><label for="ll-bubble-blur-input">毛玻璃强度</label><input id="ll-bubble-blur-input" class="bubble-blur" type="range" min="0" max="40" step="1"><output class="blur-value"></output></div>
-<div class="ll-row"><span>毛玻璃底色</span><input type="color" class="bubble-color" aria-label="毛玻璃底色"><input type="text" class="bubble-color-hex" maxlength="7" placeholder="#ffffff" aria-label="毛玻璃颜色代码"><button type="button" class="bubble-color-auto">跟随主题</button></div>
-<div class="ll-tip">颜色通过气泡不透明度叠加在背景上；0% 时颜色不会显示。</div>
-<div class="ll-tip">不透明度 0% + 毛玻璃 0px = 完全透明，直接显示背景。毛玻璃数字越大，背景越模糊。</div>
-<div class="ll-row"><button type="button" class="clear-glass">完全透明</button><button type="button" class="reset-glass">恢复美化默认</button></div>`;
-      const enabled = pane.querySelector('.bubble-enabled'), alpha = pane.querySelector('.bubble-opacity'), blur = pane.querySelector('.bubble-blur');
-      enabled.checked = !!b.enabled; alpha.value = b.opacity ?? 100; blur.value = b.blur ?? 0;
-      const color = pane.querySelector('.bubble-color'), hex = pane.querySelector('.bubble-color-hex');
-      let customColor = isHex(b.color) ? b.color : ''; color.value = customColor || '#ffffff'; hex.value = customColor;
-      color.oninput = () => { customColor = color.value; hex.value = customColor; enabled.checked = true; apply(); };
-      hex.oninput = () => { if (isHex(hex.value)) { customColor = hex.value; color.value = customColor; enabled.checked = true; apply(); } };
-      pane.querySelector('.bubble-color-auto').onclick = () => { customColor = ''; hex.value = ''; apply(); };
-      function labels() { pane.querySelector('.opacity-value').textContent = alpha.value + '%'; pane.querySelector('.blur-value').textContent = blur.value + 'px'; }
-      function apply() { set.bubbles = { ...set.bubbles, enabled: enabled.checked, opacity: +alpha.value, blur: +blur.value, color: customColor }; labels(); saveSet(); paintBubbles(); }
-      enabled.onchange = apply;
-      alpha.oninput = blur.oninput = () => { enabled.checked = true; apply(); };
-      pane.querySelector('.clear-glass').onclick = () => { enabled.checked = true; alpha.value = 0; blur.value = 0; set.bubbles = { ...set.bubbles, brightness: 100, paper: false }; apply(); render('bubbles'); };
-      pane.querySelector('.reset-glass').onclick = () => { delete set.bubbles; saveSet(); paintBubbles(); render('bubbles'); };
-      labels(); renderBubbleExtras();
-    }
-    function renderBubbleExtras() {
-      const box = doc.createElement('div');
-      const commit = (key, value) => { set.bubbles = { opacity: 100, blur: 0, ...set.bubbles, enabled: true, [key]: value }; pane.querySelector('.bubble-enabled').checked = true; saveSet(); paintBubbles(); };
-      const b = set.bubbles || {};
-      toggleRow(box, '启用背景模糊', b.blurEnabled !== false, v => commit('blurEnabled', v));
-      rangeRow(box, '背景明暗（100% 为原色）', b.brightness ?? 100, 20, 180, '%', v => commit('brightness', v));
-      toggleRow(box, '纸纹效果', b.paper, v => commit('paper', v));
-      rangeRow(box, '纸纹强度', b.paperStrength ?? 12, 0, 35, '%', v => commit('paperStrength', v));
-      colorRow(box, '纸纹颜色', b.paperColor || '#847765', v => commit('paperColor', v), () => commit('paperColor','#847765'));
-      pane.append(fold('模糊、纸纹与背景明暗', box));
+      const b=set.bubbles ||= {enabled:false,opacity:100,blur:0};
+      const commit=(field,value)=>{b[field]=value;b.enabled=true;saveSet();paintBubbles();paintAll();};
+      toggleRow(pane,'自定义楼层气泡',b.enabled,v=>{b.enabled=v;saveSet();paintBubbles();});
+      rangeRow(pane,'气泡不透明度',b.opacity??100,0,100,'%',v=>commit('opacity',v));
+      const colors=doc.createElement('div');
+      colors.append(button('纯色背景',()=>{b.opacity=100;b.sameGlobal=false;b.color=validColor(b.color)?b.color:globalBaseColor();commit('enabled',true);render('bubbles');}),button('与全局背景同色',()=>{commit('sameGlobal',true);render('bubbles');}),button('跟随主题',()=>{delete b.color;delete b.sameGlobal;saveSet();paintBubbles();render('bubbles');}));
+      colorRow(colors,'气泡底色',b.sameGlobal?globalBaseColor():b.color||globalBaseColor(),v=>{b.sameGlobal=false;commit('color',v);},()=>{delete b.color;delete b.sameGlobal;saveSet();paintBubbles();render('bubbles');},'楼层气泡');pane.append(colors);
+      const scopeRow=doc.createElement('div');scopeRow.className='ll-row';const scope=doc.createElement('select');scope.setAttribute('aria-label','质感作用范围');scope.innerHTML='<option value="bubble">仅楼层气泡</option><option value="global">全局背景</option>';scope.value=b.scope||'bubble';scope.onchange=()=>{commit('scope',scope.value);render('bubbles');};scopeRow.append('质感作用范围',scope);pane.append(scopeRow);
+      rangeRow(pane,'背景模糊',b.blur??0,0,40,'px',v=>{b.blurEnabled=true;commit('blur',v);});
+      rangeRow(pane,'背景明暗',b.brightness??100,20,180,'%',v=>commit('brightness',v));
+      pane.append(button('恢复原始明暗',()=>{commit('brightness',100);render('bubbles');}));
+      toggleRow(pane,'纸纹效果',b.paper,v=>commit('paper',v));
+      const types=doc.createElement('select');types.setAttribute('aria-label','纸纹样式');
+      for(const [id,[name]]of Object.entries(PAPER_PRESETS)){const opt=doc.createElement('option');opt.value=id;opt.textContent=name;types.append(opt);}
+      for(const it of lib.filter(x=>x.kind==='texture')){const opt=doc.createElement('option');opt.value=it.id;opt.textContent=it.name;types.append(opt);}
+      types.value=b.textureId||b.paperType||'fine';types.onchange=()=>{if(PAPER_PRESETS[types.value]){b.paperType=types.value;delete b.textureId;}else b.textureId=types.value;b.paper=true;commit('paper',true);};pane.append(types);
+      rangeRow(pane,'纸纹强度',b.paperStrength??12,0,100,'%',v=>commit('paperStrength',v));
+      const upload=doc.createElement('input');upload.type='file';upload.accept='image/*';upload.hidden=true;
+      upload.onchange=async()=>{const f=upload.files?.[0];if(!f)return;try{const {blob,a}=await shrink(await readFile(f),1600,'image/png');const it=await libAdd({kind:'texture',name:f.name,blob,a});b.textureId=it.id;b.paper=true;commit('paper',true);render('bubbles');}catch(e){host.alert('纸纹保存失败：'+e.message);}};
+      pane.append(button('上传纸纹',()=>upload.click()),upload);
+      const bottom=doc.createElement('div');bottom.className='ll-row ll-bottom-actions';bottom.append(button('完全透明',()=>{Object.assign(b,{enabled:true,opacity:0,blur:0,brightness:100,paper:false,scope:'bubble'});saveSet();paintBubbles();render('bubbles');}),button('恢复美化默认',()=>{delete set.bubbles;saveSet();paintBubbles();render('bubbles');}));pane.append(bottom);
     }
     function notice(text) { const n = doc.createElement('div'); n.className = 'll-theme-notice'; n.textContent = text; pane.append(n); return n; }
     function button(label, click) { const b = doc.createElement('button'); b.type = 'button'; b.textContent = label; b.onclick = click; return b; }
@@ -1133,7 +1251,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       const input = doc.createElement('input'); input.type = 'checkbox'; input.checked = !!checked;
       input.onchange = () => commit(input.checked); row.append(input, doc.createTextNode(label)); parent.append(row); return input;
     }
-    /* A shared ring picker, with saturation/value square and independent alpha. No CDN dependency. */
+
     function openColorWheel(parent, initial, commit) {
       pane.querySelector('.ll-picker')?.remove();
       const box = doc.createElement('div'); box.className = 'll-picker';
@@ -1142,7 +1260,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       const g = cv.getContext('2d');
       const probe = doc.createElement('span'); probe.style.color = validColor(initial) ? initial : '#ffffff'; box.append(probe); parent.append(box);
       const computed = host.getComputedStyle(probe).color; probe.remove();
-      // Canvas normalizes CSS color syntax, including modern color functions, into sRGB pixels.
+
       g.fillStyle = computed; g.fillRect(0,0,1,1);
       const rgba = g.getImageData(0,0,1,1).data;
       const rgb = [...rgba].slice(0,3).map(n => n/255), mx = Math.max(...rgb), mn = Math.min(...rgb), d = mx-mn;
@@ -1179,17 +1297,17 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
     }
     function colorRow(parent, label, value, commit, reset, hint = '') {
       const row = doc.createElement('div'); row.className = 'll-color-row';
-      const title = doc.createElement('label'); title.textContent = label; title.title = hint || label;
+      const title = doc.createElement('label'); title.className='ll-color-place';title.textContent = label; title.title = hint || label;
       const chip = button(' ',()=>openColorWheel(row, input.value || value, apply)); chip.className = 'll-color-chip'; chip.setAttribute('aria-label',label+'取色盘');
       const input = doc.createElement('input'); input.type='text'; input.value=value || '';input.placeholder='跟随美化 / CSS 颜色';input.setAttribute('aria-label',label+'颜色代码');
-      const apply = color => { input.value=color;chip.style.setProperty('--chip', color || 'transparent');commit(color); };
+      const apply = color => { input.value=color;chip.style.setProperty('--chip', color || 'transparent');chip.style.setProperty('background',color || 'transparent','important');commit(color); };
       input.onchange=()=>{if(validColor(input.value)){input.setCustomValidity('');apply(input.value.trim());}else{input.setCustomValidity('支持 HEX、RGB、HSL 等 CSS 颜色代码');input.reportValidity();}};
-      input.oninput=()=>input.setCustomValidity('');chip.style.setProperty('--chip',validColor(value)?value:'transparent');
-      row.append(title,chip,input,button('还原',()=>{reset();input.value='';chip.style.setProperty('--chip','transparent');}));parent.append(row);return row;
+      input.oninput=()=>input.setCustomValidity('');chip.style.setProperty('--chip',validColor(value)?value:'transparent');chip.style.setProperty('background',validColor(value)?value:'transparent','important');
+      row.append(title,chip,input,button('还原',()=>{reset();input.value='';chip.style.setProperty('--chip','transparent');chip.style.setProperty('background','transparent','important');}));parent.append(row);return row;
     }
     function renderThemes() {
       const char = currentCharacter(), name = char?.name || '未选择单人角色';
-      const tip = notice('当前角色：' + name + (char?.avatar && set.charThemes[char.avatar] ? '\n已绑定：' + set.charThemes[char.avatar] : '\n尚未绑定。未绑定角色保留当前美化。'));
+      const tip = notice('当前角色：' + name + (char?.avatar && set.charThemes[char.avatar] ? '\n已绑定：' + set.charThemes[char.avatar] : '\n尚未绑定'));
       const search=doc.createElement('input');search.type='text';search.className='ll-theme-search';search.placeholder='搜索美化名称';search.setAttribute('aria-label','搜索美化');pane.append(search);
       const actions=doc.createElement('div');actions.className='ll-row';
       actions.append(button('刷新美化列表',()=>render('themes')),button('解除当前角色绑定',()=>{if(char?.avatar){delete set.charThemes[char.avatar];saveSet();render('themes');}}));pane.append(actions);
@@ -1201,80 +1319,89 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
         const cover=doc.createElement('div');cover.className='ll-theme-cover';const item=byId(set.themeCovers[theme.value]);
         if(item){const img=doc.createElement('img');img.src=itemUrl(item);img.alt=theme.textContent+'封面';cover.append(img);}else cover.textContent='♪';
         const title=doc.createElement('strong');title.textContent=theme.textContent+(char?.avatar&&set.charThemes[char.avatar]===theme.value?' · 已绑定':'');
-        const row=doc.createElement('div');row.className='ll-row';
+        const row=doc.createElement('div');row.className='ll-row ll-theme-actions';
         row.append(button('应用',async()=>{try{await applyNativeTheme(theme.value);draw();}catch(e){tip.textContent=e.message;}}));
         const bind=button('绑定当前角色',async()=>{const current=currentCharacter();if(!current?.avatar)return;try{await applyNativeTheme(theme.value);set.charThemes[current.avatar]=theme.value;saveSet();render('themes');}catch(e){tip.textContent=e.message;}});bind.disabled=!char?.avatar;row.append(bind);
         const upload=doc.createElement('input');upload.type='file';upload.accept='image/*';upload.hidden=true;
         upload.onchange=async()=>{const f=upload.files?.[0];if(!f)return;try{const {blob,a}=await shrink(await readFile(f),960,'image/jpeg');const it=await libAdd({kind:'cover',name:theme.value+' · 封面',blob,a});const old=set.themeCovers[theme.value];set.themeCovers[theme.value]=it.id;saveSet();if(old)await libDel([old]);draw();}catch(e){tip.textContent='封面保存失败：'+e.message;}};
-        row.append(button('上传封面',()=>upload.click()),upload);
-        if(item)row.append(button('移除封面',async()=>{delete set.themeCovers[theme.value];saveSet();await libDel([item.id]);draw();}));
+        cover.tabIndex=0;cover.setAttribute('role','button');cover.setAttribute('aria-label',theme.textContent+'更换例图');cover.onclick=()=>upload.click();cover.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();upload.click();}};row.append(upload);
+        if(item)row.append(button('移除例图',async()=>{delete set.themeCovers[theme.value];saveSet();await libDel([item.id]);draw();}));
         card.append(cover,title,row);grid.append(card);
       }} search.oninput=draw;draw();
     }
-    function renderThemeColors() {
-      const p=profile();p.colors ||= {};p.text ||= {};p.variables ||= {};
-      const save=()=>{saveSet();paintTheme();};
-      notice('当前美化：'+(themeName()==='__current__'?'当前 CSS':themeName())+'\n颜色单独记在这套美化下。点色块打开圆环取色盘，也可输入 CSS 颜色代码。');
-      const exclusions=doc.createElement('input');exclusions.type='text';exclusions.value=p.exclude||'';exclusions.placeholder='例如：pre, code, .状态栏, love_letter';exclusions.setAttribute('aria-label','不生效的标签或选择器');
-      const label=doc.createElement('label');label.textContent='不改色的标签 / CSS 选择器（逗号分隔，包含其中内容）';pane.append(label,exclusions);
-      exclusions.onchange=()=>{try{if(exclusions.value.trim())doc.querySelector(exclusions.value);p.exclude=exclusions.value.trim();exclusions.setCustomValidity('');save();}catch(_){exclusions.setCustomValidity('选择器格式不正确，请检查逗号、标签名和括号');exclusions.reportValidity();}};
+    function colorToolbar(p,save,kind) {
+      const row=doc.createElement('div');row.className='ll-exclusions-row';
+      const exclusions=doc.createElement('input');exclusions.type='text';exclusions.value=p.exclude||'';exclusions.placeholder='不改色的标签：pre, code';exclusions.setAttribute('aria-label','不生效的标签或选择器');
+      exclusions.onchange=()=>{try{if(exclusions.value.trim())doc.querySelector(exclusions.value);p.exclude=exclusions.value.trim();exclusions.setCustomValidity('');save();}catch(_){exclusions.setCustomValidity('选择器格式不正确');exclusions.reportValidity();}};
+      row.append(exclusions,button('还原全部',()=>{if(!host.confirm('还原当前页的所有颜色？'))return;if(kind==='fonts'){p.text={};delete p.glow;delete p.glowColor;delete p.glowSize;}else{p.colors={};p.variables={};}save();render(kind==='fonts'?'fonts':'text');}));pane.append(row);
+    }
+    function renderFontPage() {
+      const p=profile();p.text ||= {};const save=()=>{saveSet();paintTheme();};colorToolbar(p,save,'fonts');
       const textBox=doc.createElement('div');
-      for(const [kind,label,tags] of textKinds) colorRow(textBox,label,p.text[kind] || host.getComputedStyle(doc.querySelector(tags ? '#chat .mes_text :is(' + tags + ')' : '#chat .mes_text') || root).color,v=>{p.text[kind]=v;save();},()=>{delete p.text[kind];save();});
+      for(const [kind,label,tags] of textKinds)colorRow(textBox,label,p.text[kind] || host.getComputedStyle(doc.querySelector(tags?'#chat .mes_text :is('+tags+')':'#chat .mes_text')||root).color,v=>{p.text[kind]=v;save();},()=>{delete p.text[kind];save();render('fonts');},'聊天正文 · '+label);
       toggleRow(textBox,'正文发光',p.glow,v=>{p.glow=v;save();});
-      colorRow(textBox,'发光颜色',p.glowColor||'#ffffff',v=>{p.glowColor=v;save();},()=>{delete p.glowColor;p.glow=false;save();});
-      rangeRow(textBox,'发光强度',p.glowSize||4,1,20,'px',v=>{p.glowSize=v;save();});pane.append(fold('正文与各种文本',textBox));
+      colorRow(textBox,'发光颜色',p.glowColor||'#ffffff',v=>{p.glowColor=v;save();},()=>{delete p.glowColor;p.glow=false;save();render('fonts');},'聊天正文 · 发光');
+      rangeRow(textBox,'发光强度',p.glowSize||4,1,20,'px',v=>{p.glowSize=v;save();});pane.append(fold('字体颜色',textBox));
+      renderFontManager();
+    }
+    function renderFontManager() {
+      const body=doc.createElement('div'),cfg=set.fonts;const persist=()=>{saveSet();paintFonts();};
+      toggleRow(body,'启用全局字体',cfg.enabled,v=>{cfg.enabled=v;persist();});
+      for(const [lang,label] of fontLanguages){
+        const row=doc.createElement('div');row.className='ll-row';const text=doc.createElement('label');text.textContent=label;
+        const select=doc.createElement('select');select.setAttribute('aria-label',label+'字体');const empty=doc.createElement('option');empty.value='';empty.textContent='跟随默认 / 美化';select.append(empty);
+        for(const it of lib.filter(x=>x.kind==='font'||x.kind==='fontCss')){const opt=doc.createElement('option');opt.value=it.id;opt.textContent=it.name;select.append(opt);}
+        select.value=cfg.assignments[lang]||'';select.onchange=()=>{cfg.assignments[lang]=select.value;cfg.enabled=true;persist();};row.append(text,select);body.append(row);
+      }
+      const name=doc.createElement('input');name.type='text';name.placeholder='字体名称';name.setAttribute('aria-label','保存的字体名称');
+      const css=doc.createElement('textarea');css.placeholder='@font-face { font-family: "我的字体"; src: url(...); }\n或 font-family: serif;';css.setAttribute('aria-label','字体 CSS 代码');
+      body.append(name,css);
+      const actions=doc.createElement('div');actions.className='ll-row';
+      actions.append(button('保存 CSS 字体',async()=>{try{const parsed=parseFontCss(css.value);const it=await libAdd({kind:'fontCss',name:name.value.trim()||parsed.family,...parsed});cfg.assignments.default=it.id;cfg.enabled=true;persist();render('fonts');}catch(e){host.alert(e.message);}}));
+      const upload=doc.createElement('input');upload.type='file';upload.accept='.ttf,.otf,.woff,.woff2,font/*';upload.hidden=true;
+      upload.onchange=async()=>{const f=upload.files?.[0];if(!f)return;try{const it=await libAdd({kind:'font',name:f.name,blob:f});cfg.assignments.default=it.id;cfg.enabled=true;persist();render('fonts');}catch(e){host.alert('字体保存失败：'+e.message);}};
+      actions.append(button('上传字体文件',()=>upload.click()),upload,button('恢复美化字体',()=>{cfg.enabled=false;persist();render('fonts');}));body.append(actions);
+      const list=doc.createElement('div');list.className='ll-font-list';
+      for(const it of lib.filter(x=>x.kind==='font'||x.kind==='fontCss')){
+        const row=doc.createElement('div');row.className='ll-font-item';const title=doc.createElement('span');title.textContent=it.name;
+        row.append(title,button('使用',()=>{cfg.assignments.default=it.id;cfg.enabled=true;persist();render('fonts');}),button('删除',async()=>{if(!host.confirm('删除字体 '+it.name+'？'))return;await libDel([it.id]);render('fonts');}));list.append(row);
+      }
+      body.append(fold('已存储字体',list,false));pane.append(fold('全局字体管理',body));
+    }
+    function colorPlace(uses) {
+      const text=uses.join(' ');
+      const places=[];
+      if(/mes_text|quote|italics|underline|text-color|ink|BodyColor|EmColor|QuoteColor/i.test(text))places.push('聊天文字');
+      if(/avatar|--ll-av|hang-|ring-|staff/i.test(text))places.push('头像 / 装饰');
+      if(/\.mes\b|bubble|MesBlur/i.test(text))places.push('楼层气泡');
+      if(/#chat|#sheld|ChatTint/i.test(text))places.push('聊天区域');
+      if(/body|#bg|paper|background|--lb-bg/i.test(text))places.push('背景');
+      if(/border|line|edge/i.test(text))places.push('边框');
+      if(/shadow|glow/i.test(text))places.push('阴影 / 发光');
+      if(/button|input|select|menu|drawer|BlurTint|BorderColor/i.test(text))places.push('按钮 / 界面');
+      return [...new Set(places)].join('、') || '主题装饰';
+    }
+    function renderThemeColors() {
+      const p=profile();p.colors ||= {};p.variables ||= {};const save=()=>{saveSet();paintTheme();};colorToolbar(p,save,'theme');
       const nativeBox=doc.createElement('div');
-      for(const [label,variable] of nativeColors) colorRow(nativeBox,label,p.variables[variable]||host.getComputedStyle(root).getPropertyValue(variable).trim(),v=>{p.variables[variable]=v;save();},()=>{delete p.variables[variable];save();},variable);
-      pane.append(fold('酒馆全局主题色',nativeBox,false));
-      const cssBox=doc.createElement('div');
-      toggleRow(cssBox,'同时读取其他可访问样式表（含界面与扩展）',p.allSheets,v=>{p.allSheets=v;save();render('text');});
-      cssBox.append(button('重新读取当前 CSS 颜色',()=>render('text')));
-      const result=detectColors();
-      const info=doc.createElement('p');info.className='ll-tip';info.textContent=`读到 ${result.found.size} 种 CSS 颜色。可改边框、背景、渐变、阴影和颜色变量；跨域样式、图片本身及图片内的颜色无法直接读取。`;cssBox.append(info);
-      const search=doc.createElement('input');search.type='text';search.placeholder='搜索颜色 / 属性 / 选择器';search.setAttribute('aria-label','搜索 CSS 颜色');cssBox.append(search);
+      for(const [label,variable] of nativeColors.filter(([,v])=>!/BodyColor|EmColor|UnderlineColor|QuoteColor/.test(v)))colorRow(nativeBox,label,p.variables[variable]||host.getComputedStyle(root).getPropertyValue(variable).trim(),v=>{p.variables[variable]=v;save();},()=>{delete p.variables[variable];save();render('text');},'酒馆 · '+label);
+      pane.append(fold('酒馆主题色',nativeBox));
+      const cssBox=doc.createElement('div');toggleRow(cssBox,'读取其他样式表',p.allSheets,v=>{p.allSheets=v;save();render('text');});cssBox.append(button('重新读取',()=>render('text')));
+      const result=detectColors();const search=doc.createElement('input');search.type='text';search.placeholder='搜索位置 / 颜色 / 属性';search.setAttribute('aria-label','搜索 CSS 颜色');cssBox.append(search);
       const rows=[];
-      for(const [original,item] of result.found){const uses=[...item.uses].join('\n');const row=colorRow(cssBox,item.value,p.colors[original]||item.value,v=>{p.colors[original]=v;save();},()=>{delete p.colors[original];save();},uses);rows.push({row,text:(original+' '+uses).toLowerCase()});}
-      search.oninput=()=>rows.forEach(({row,text})=>row.hidden=!text.includes(search.value.toLowerCase()));
-      pane.append(fold('读取美化内的 CSS 配色',cssBox));
-      pane.append(button('还原这套美化的所有颜色',()=>{if(!host.confirm('还原当前美化的颜色修改？头像、图片和角色绑定会保留。'))return;delete set.themeProfiles[themeName()];save();render('text');}));
+      for(const [original,item] of result.found){const uses=[...item.uses],place=colorPlace(uses);const row=colorRow(cssBox,place,p.colors[original]||item.value,v=>{p.colors[original]=v;save();},()=>{delete p.colors[original];save();render('text');},uses.join('\n'));row.querySelector('input').setAttribute('aria-label',item.value+'颜色代码');const raw=doc.createElement('small');raw.textContent=item.value;row.querySelector('label').append(raw);rows.push({row,text:(original+' '+uses.join(' ')+' '+place).toLowerCase()});}
+      search.oninput=()=>rows.forEach(({row,text})=>row.hidden=!text.includes(search.value.toLowerCase()));pane.append(fold('美化 CSS 配色',cssBox));
     }
     function renderManagerSettings() {
       const box=doc.createElement('div');const a=set.appearance;
       const save=()=>{saveSet();paintAppearance();paintAll();};
-      rangeRow(box,'管理器不透明度',a.opacity??100,0,100,'%',v=>{a.opacity=v;save();});
+      rangeRow(box,'管理器页面不透明度',clamp(a.opacity,25,100,100),25,100,'%',v=>{a.opacity=v;save();});
       rangeRow(box,'管理器毛玻璃',a.blur||0,0,40,'px',v=>{a.blur=v;save();});
       toggleRow(box,'显示并启用头像框功能',a.showFrame,v=>{a.showFrame=v;save();});
       toggleRow(box,'显示并启用序列头像颜色功能',a.showColor,v=>{a.showColor=v;save();});
-      const note=doc.createElement('p');note.className='ll-tip';note.textContent='这两项默认关闭，开启后在前面的标签栏显示。主题色不受这个开关影响。';box.append(note);
       pane.prepend(fold('管理器外观与可选功能',box));
     }
 
-    function renderText() {
-      const t = set.text || {};
-      pane.innerHTML = `<div class="ll-tip">这些设置统一应用到消息正文，包括引用、斜体和代码文字。修改后立即保存。</div>
-<label><input type="checkbox" class="text-color-enabled"> 强制正文颜色</label>
-<div class="ll-row"><span>文字颜色</span><input type="color" class="text-color" aria-label="正文字体颜色"><input type="text" class="text-color-hex" maxlength="7" aria-label="正文字体颜色代码"></div>
-<label><input type="checkbox" class="text-glow-enabled"> 正文字体发光</label>
-<div class="ll-row"><span>发光颜色</span><input type="color" class="text-glow-color" aria-label="正文发光颜色"><input type="text" class="text-glow-hex" maxlength="7" aria-label="正文发光颜色代码"></div>
-<div class="ll-row"><span>发光强度</span><input type="range" class="text-glow-size" min="1" max="20" step="1"><output class="text-glow-value"></output></div>
-<div class="ll-tip text-demo">♪ 文字与发光预览 · Ririshiko ♡</div>
-<div class="ll-row"><button type="button" class="text-reset">恢复美化默认</button></div>`;
-      const colorEnabled = pane.querySelector('.text-color-enabled'), glowEnabled = pane.querySelector('.text-glow-enabled'), color = pane.querySelector('.text-color'), hex = pane.querySelector('.text-color-hex'), glowColor = pane.querySelector('.text-glow-color'), glowHex = pane.querySelector('.text-glow-hex'), size = pane.querySelector('.text-glow-size'), demo = pane.querySelector('.text-demo');
-      colorEnabled.checked = !!t.colorEnabled; glowEnabled.checked = !!t.glowEnabled;
-      const themeInk = rootVar('--lb-ink') || rootVar('--ll-ink');
-      color.value = isHex(t.color) ? t.color : (isHex(themeInk) ? themeInk : '#ffffff'); hex.value = color.value;
-      glowColor.value = isHex(t.glowColor) ? t.glowColor : '#ffffff'; glowHex.value = glowColor.value; size.value = t.glowSize || 4;
-      function show() { pane.querySelector('.text-glow-value').textContent = size.value + 'px'; demo.style.color = colorEnabled.checked ? color.value : ''; demo.style.textShadow = glowEnabled.checked ? '0 0 ' + size.value + 'px ' + glowColor.value : 'none'; }
-      function apply() { set.text = { colorEnabled: colorEnabled.checked, color: color.value, glowEnabled: glowEnabled.checked, glowColor: glowColor.value, glowSize: +size.value }; saveSet(); paintText(); show(); }
-      colorEnabled.onchange = glowEnabled.onchange = apply;
-      color.oninput = () => { hex.value = color.value; colorEnabled.checked = true; apply(); };
-      hex.oninput = () => { if (isHex(hex.value)) { color.value = hex.value; colorEnabled.checked = true; apply(); } };
-      glowColor.oninput = () => { glowHex.value = glowColor.value; glowEnabled.checked = true; apply(); };
-      glowHex.oninput = () => { if (isHex(glowHex.value)) { glowColor.value = glowHex.value; glowEnabled.checked = true; apply(); } };
-      size.oninput = () => { glowEnabled.checked = true; apply(); };
-      pane.querySelector('.text-reset').onclick = () => { delete set.text; saveSet(); paintText(); render('text'); };
-      show();
-    }
     function renderEntry() {
       const r = set.entry || { mode: 'text', text: '♡', size: 22 };
       pane.innerHTML = `<div class="ll-tip">编辑按钮左侧的管理器入口，可显示文字、表情或自定义图片。修改后立即保存。</div>
@@ -1306,11 +1433,11 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       pane.querySelector('.entry-reset').onclick = () => { delete set.entry; saveSet(); paintEntries(); render('entry'); };
       previewEntry(); renderManagerSettings();
     }
-    /* 本地库 */
+
     function renderLib() {
-      const names = { avatar: '头像', frame: '头像框', bg: '背景', icon: '入口图标', cover: '美化封面' };
+      const names = { avatar: '头像', frame: '头像框', bg: '背景', icon: '入口图标', cover: '美化例图', texture:'纸纹',font:'字体文件',fontCss:'CSS 字体' };
       pane.append(Object.assign(doc.createElement('div'), { className: 'll-tip', textContent: '这些图都存在这台设备的浏览器里。点右上角 × 删除单张。' }));
-      for (const kind of ['avatar', 'frame', 'bg', 'icon', 'cover']) {
+      for (const kind of ['avatar', 'frame', 'bg', 'icon', 'cover', 'texture', 'font', 'fontCss']) {
         const items = lib.filter(x => x.kind === kind);
         const body = doc.createElement('div');
         const g = doc.createElement('div'); g.className = 'll-grid';
@@ -1319,7 +1446,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
         });
         items.forEach(it => {
           const d = doc.createElement('div'); if (kind === 'frame' || kind === 'icon') d.classList.add(kind);
-          d.style.backgroundImage = cssUrl(itemUrl(it)); d.title = it.name || '';
+          if(it.kind==='font'||it.kind==='fontCss'){d.textContent=it.name;}else d.style.backgroundImage = cssUrl(itemUrl(it)); d.title = it.name || '';
           const x = doc.createElement('b'); x.textContent = '×';
           x.onclick = async e => { e.stopPropagation(); if (host.confirm('删除这张' + names[kind] + '？')) { await libDel([it.id]); render('lib'); } };
           d.append(x); g.append(d);
@@ -1336,17 +1463,16 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       const all = Object.assign(doc.createElement('button'), { type: 'button', className: 'danger', textContent: '全部删除（清空本地库和所有设置）' });
       all.onclick = async () => {
         if (!host.confirm('清空所有保存的头像、头像框、背景，并恢复默认？')) return;
-        await libDel(lib.map(x => x.id)); set = { avatar: {}, bg: {}, frame: {}, appearance: {opacity:100,blur:0,showFrame:false,showColor:false}, themeProfiles:{},charThemes:{},themeCovers:{},themeTextMigrated:true }; saveSet(); paintAppearance(); paintTheme(); paintAll(); render('lib');
+        await libDel(lib.map(x => x.id)); set = { avatar: {}, bg: {}, frame: {}, appearance: {opacity:100,blur:0,showFrame:false,showColor:false}, themeProfiles:{},charThemes:{},themeCovers:{},fonts:{enabled:false,assignments:{}},themeTextMigrated:true }; saveSet(); paintAppearance(); paintTheme(); paintFonts(); paintAll(); render('lib');
       };
       row.append(all); pane.append(row);
     }
     fitManagerViewport(wrap);
     doc.body.append(wrap);
     wrap.showModal();
-    render(tab);
+    render(tab);paintAppearance();
   }
 
-  /* 消息操作栏：紧挨编辑按钮左侧，不依赖主题显示开关。 */
   function mgrButton(mes, avatar) {
     const edit = mes.querySelector('.mes_edit');
     if (!edit) return;
@@ -1359,7 +1485,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
     paintEntry(b);
     if (b.nextElementSibling !== edit) edit.before(b);
   }
-  /* 任何美化：酒馆魔法棒菜单里的入口 */
+
   function menuEntry() {
     const menu = doc.getElementById('extensionsMenu');
     if (!menu || menu.querySelector('#ll-avatar-manager')) return;
@@ -1382,7 +1508,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
     const icon = doc.createElement('div');
     icon.className = 'inline-drawer-icon fa-solid fa-circle-chevron-down down';
     header.append(heading, icon);
-    // Clicks use SillyTavern's delegated native drawer handler and theme styles.
+
     header.addEventListener('keydown', event => {
       if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); header.click(); }
     });
@@ -1390,22 +1516,18 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
     const button = doc.createElement('button'); button.type = 'button';
     button.className = 'menu_button interactable'; button.textContent = '♡ 打开头像与背景管理';
     button.addEventListener('click', () => openManager(null));
-    const note = doc.createElement('div'); note.className = 'opacity50p';
-    note.textContent = '头像、头像框、背景、气泡与正文样式 · v1.1.0';
-    content.append(button, note); drawer.append(header, content);
+    content.append(button); drawer.append(header, content);
     section.append(drawer); container.append(section);
   }
-  libLoad().then(() => dead ? undefined : migrate()).then(() => { if (!dead) paintAll(); }).catch(() => {});
+  libLoad().then(() => dead ? undefined : migrate()).then(() => { if (!dead) {paintAll();paintFonts();} }).catch(() => {});
 
-  /* ---------- 调度（只处理有变化的楼层） ----------
-   * 以前任何一条消息的正文一变（包括 AI 流式输出的每个字），都会把整个聊天重新扫一遍、
-   * 重设每个头像的样式，楼层一多就会卡。现在只处理真正变化的楼层，正文里的文字变化直接忽略。 */
   const uiSelector = '.ll-ink-toggle,.ll-avatar-entry,.ll-mgr,.ll-frame-over';
   const dirty = new Set(); let full = true;
   function scanMes(mes) {
     if (!mes.isConnected) return;
-    mes.querySelector(':scope > .ll-message-footer, :scope > .ll-message-outro')?.remove(); // 旧版残留
+    mes.querySelector(':scope > .ll-message-footer, :scope > .ll-message-outro')?.remove();
 
+    ensurePaper(mes);
     const av = mes.querySelector('.avatar'); if (av) paintOne(av); mgrButton(mes, av);
     const w = mes.querySelector(':scope > .mesAvatarWrapper'); if (w) inkToggle(w);
   }
@@ -1427,7 +1549,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       if (!t || t.closest(uiSelector)) continue;
       const mes = t.closest('#chat > .mes');
       const inText = t.closest('.mes_text');
-      if (inText) continue; // 忽略正文流式输出
+      if (inText) continue;
       if (r.type === 'attributes') { if (mes) { dirty.add(mes); hit = true; } continue; }
       if (t.closest('.mesIDDisplay,.mes_timer,.tokenCounterDisplay')) { if (mes) { dirty.add(mes); hit = true; } continue; }
       for (const n of r.addedNodes) {
@@ -1438,7 +1560,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
           hit = true;
         }
       }
-      if (r.removedNodes.length && t.id === 'chat') hit = true;   // 聊天被清空 / 切换
+      if (r.removedNodes.length && t.id === 'chat') hit = true;
     }
     if (hit) schedule();
   });
@@ -1455,9 +1577,9 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
     darkQuery?.removeEventListener?.('change', applyScheme); delete root.dataset.llScheme;
     doc.querySelectorAll(avatarSelector).forEach(a => { delete a.dataset.llInk; });
     doc.querySelectorAll('.ll-mgr').forEach(n => n.llCleanupViewport?.());
-    doc.querySelectorAll('.ll-bubble-tail,.ll-song-stats,.ll-library-views,.ll-home-piano,.ll-ink-toggle,.ll-player,.ll-bg-button,.ll-avatar-entry,.ll-mgr,#ll-avatar-manager').forEach(n => n.remove());
+    doc.querySelectorAll('.ll-avatar-bg-layer,.ll-paper-layer,.ll-bubble-tail,.ll-song-stats,.ll-library-views,.ll-home-piano,.ll-ink-toggle,.ll-player,.ll-bg-button,.ll-avatar-entry,.ll-mgr,#ll-avatar-manager').forEach(n => n.remove());
     doc.querySelectorAll('#chat .mes .avatar').forEach(a => {
-      ['--ll-av-bg', '--ll-av-bg-size', '--ll-av-bg-pos'].forEach(p => a.style.removeProperty(p));
+      ['--ll-av-bg', '--ll-av-bg-size', '--ll-av-bg-pos', '--ll-av-color','--ll-av-bg-blur'].forEach(p => a.style.removeProperty(p));
       ['--ll-ring', '--ll-ring-mask', '--ll-ring-color', '--ll-ring-scale', '--ll-ring-dx', '--ll-ring-dy'].forEach(p => a.parentElement?.style.removeProperty(p));
       a.querySelector(':scope > .ll-frame-over')?.remove(); a.classList.remove('ll-frame-host', 'll-custom-avatar-bg'); delete a.dataset.llOverSig;
       delete a.dataset.llInkSig; delete a.dataset.llBgSig; if (a.parentElement) { delete a.parentElement.dataset.llFrameSig; delete a.parentElement.dataset.llCustom; [...CUSTOM_VARS, '--ll-wave', '--ll-av-c'].forEach(p => a.parentElement.style.removeProperty(p)); }
@@ -1465,7 +1587,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       const img = a.querySelector('img'); if (img?.dataset.llOrig) { img.setAttribute('src', img.dataset.llOrig); delete img.dataset.llOrig; delete img.dataset.llSet; }
     });
     urls.forEach(u => host.URL.revokeObjectURL(u)); panelCss.remove();
-    root.classList.remove('ll-custom-global-bg', 'll-custom-bubbles', 'll-custom-text-color', 'll-custom-text-glow'); ['--ll-global-bg','--ll-global-bg-size','--ll-global-bg-pos','--ll-bubble-opacity','--ll-bubble-blur','--ll-bubble-color','--ll-bubble-fill','--ll-bubble-brightness','--ll-bubble-paper','--ll-text-color','--ll-text-glow-color','--ll-text-glow-size'].forEach(p => root.style.removeProperty(p));
+    root.classList.remove('ll-custom-global-bg', 'll-custom-bubbles', 'll-custom-text-color', 'll-custom-text-glow','ll-global-effects'); ['--ll-global-bg','--ll-global-bg-size','--ll-global-bg-pos','--ll-global-color','--ll-paper-strength','--ll-paper-size','--ll-bubble-opacity','--ll-bubble-blur','--ll-bubble-color','--ll-bubble-fill','--ll-bubble-brightness','--ll-bubble-paper','--ll-text-color','--ll-text-glow-color','--ll-text-glow-size'].forEach(p => root.style.removeProperty(p));
     guard.remove(); if (host[key]?.dispose === dispose) delete host[key];
   }
   function onPageHide(event) { if (!event.persisted) dispose(); }
@@ -1475,6 +1597,5 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
   scan();
 }
 
-// Auto-start also supports SillyTavern versions without lifecycle hooks.
 init();
 

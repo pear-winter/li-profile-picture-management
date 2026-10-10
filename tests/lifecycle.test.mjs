@@ -9,7 +9,7 @@ function fixture(readyState = 'complete') {
     let observers = 0;
     class Element {
         constructor() { this.dataset = {}; this.children = []; this.props = new Map(); this.style = {setProperty:(k,v)=>this.props.set(k,v),removeProperty:k=>this.props.delete(k)}; const classes = new Set(); this.classList = {toggle:(c,on)=>on?classes.add(c):classes.delete(c),remove:(...cs)=>cs.forEach(c=>classes.delete(c))}; }
-        append(...children) { for (const child of children) { this.children.push(child); child.parentElement = this; if (child.id) nodes.set(child.id, child); } }
+        append(...children) { for (const child of children) { if(child.parentElement)child.parentElement.children=child.parentElement.children.filter(n=>n!==child); this.children.push(child); child.parentElement = this; if (child.id) nodes.set(child.id, child); } }
         remove() { if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(x=>x!==this); nodes.delete(this.id); }
         setAttribute(k,v) { (this.attributes ||= {})[k] = v; }
         addEventListener(k,fn) { (this.listeners ||= {})[k] = fn; }
@@ -25,9 +25,9 @@ function fixture(readyState = 'complete') {
     return {context,window,document,events,hostEvents,nodes,head,storage,get observers(){return observers;}};
 }
 test('standalone startup is idempotent and removes its UI/listeners on dispose',async()=>{
-    const f=fixture(); assert.equal(f.observers,2); assert.equal(f.head.children.length,4);
+    const f=fixture(); assert.equal(f.observers,2); assert.equal(f.head.children.length,5);
     assert.ok(f.nodes.get('ll-avatar-manager'));assert.ok(f.nodes.get('lili-avatar-extension-settings'));
-    f.context.init(); assert.equal(f.observers,2); assert.equal(f.head.children.length,4);
+    f.context.init(); assert.equal(f.observers,2); assert.equal(f.head.children.length,5);
     await new Promise(r=>setImmediate(r));
     f.context.dispose();assert.equal(f.observers,0);assert.equal(f.head.children.length,0);
     assert.equal(f.window.__liliSequenceAvatarV7,undefined);assert.equal(f.nodes.has('lili-avatar-extension-settings'),false);
