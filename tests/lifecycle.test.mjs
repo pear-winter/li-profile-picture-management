@@ -25,9 +25,9 @@ function fixture(readyState = 'complete') {
     return {context,window,document,events,hostEvents,nodes,head,storage,get observers(){return observers;}};
 }
 test('standalone startup is idempotent and removes its UI/listeners on dispose',async()=>{
-    const f=fixture(); assert.equal(f.observers,2); assert.equal(f.head.children.length,5);
+    const f=fixture(); assert.equal(f.observers,2); assert.equal(f.head.children.length,6);
     assert.ok(f.nodes.get('ll-avatar-manager'));assert.ok(f.nodes.get('lili-avatar-extension-settings'));
-    f.context.init(); assert.equal(f.observers,2); assert.equal(f.head.children.length,5);
+    f.context.init(); assert.equal(f.observers,2); assert.equal(f.head.children.length,6);
     await new Promise(r=>setImmediate(r));
     f.context.dispose();assert.equal(f.observers,0);assert.equal(f.head.children.length,0);
     assert.equal(f.window.__liliSequenceAvatarV7,undefined);assert.equal(f.nodes.has('lili-avatar-extension-settings'),false);
@@ -44,4 +44,12 @@ test('install package preserves script storage keys and has no helper dependency
     const manifest=JSON.parse(readFileSync(new URL('../manifest.json',import.meta.url),'utf8'));
     assert.deepEqual(manifest.requires,[]);assert.ok(source.includes("'lili-avatar-set'"));assert.ok(source.includes("'lili-avatar-lib'"));
     assert.ok(!source.includes('getCurrentScriptId'));assert.equal(manifest.js,'index.js');
+});
+test('v1.7.0 extension and shipped script stay in sync',()=>{
+    const script=JSON.parse(readFileSync(new URL('../scripts/酒馆助手脚本-梨梨头像背景管理器-v1.7.0.json',import.meta.url),'utf8'));
+    const manifest=JSON.parse(readFileSync(new URL('../manifest.json',import.meta.url),'utf8'));
+    const pkg=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));
+    assert.equal(manifest.version,'1.7.0');assert.equal(pkg.version,manifest.version);assert.ok(script.name.endsWith('v'+manifest.version));
+    const body=script.content.slice(script.content.indexOf('function startManager() {'),script.content.lastIndexOf('\n      startManager();')).trim().replace('script: true','extension: true');
+    assert.equal(source.slice(source.indexOf('function startManager() {'),source.lastIndexOf('\ninit();')).trim(),body);
 });
