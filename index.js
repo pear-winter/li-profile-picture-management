@@ -156,24 +156,59 @@ function startManager() {
     const t = d.transaction('items', mode), st = t.objectStore('items'); const out = fn(st);
     t.oncomplete = () => res(out?.result ?? out); t.onerror = () => rej(t.error); t.onabort = () => rej(t.error);
   }); };
-  let lib = [];
+  let lib = [], libReady = false, libLoading = null;
+  const libIndex = new Map();
+  const indexLibrary = () => { libIndex.clear(); lib.forEach(it => libIndex.set(it.id, it)); };
   const urls = new Map();
   const itemUrl = it => { if (!it) return ''; if (it.builtin) return RING_URL[it.id.slice(8)] || ''; if (it.url) return it.url; if (!urls.has(it.id)) urls.set(it.id, host.URL.createObjectURL(it.blob)); return urls.get(it.id); };
   const BUILTIN_FONTS = [
     { id: 'bfont:song', kind: 'fontCss', builtin: true, name: '宋体', family: '"Noto Serif SC","Songti SC","STSong","SimSun","Source Han Serif SC",serif', src: 'https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700&display=swap' },
     { id: 'bfont:script', kind: 'fontCss', builtin: true, name: '花体（英文）', family: '"Great Vibes","Pinyon Script",cursive', src: 'https://fonts.googleapis.com/css2?family=Great+Vibes&family=Pinyon+Script&display=swap' },
   ];
-  const byId = id => { const s = String(id || ''); return s.startsWith('builtin:') ? builtinFrames().find(x => x.id === id) : s.startsWith('bfont:') ? BUILTIN_FONTS.find(x => x.id === id) : lib.find(x => x.id === id); };
-  async function libLoad() { try { lib = (await tx('readonly', s => s.getAll())) || []; } catch (_) { lib = []; } lib.sort((a, b) => b.t - a.t); }
+  const byId = id => { const s = String(id || ''); return s.startsWith('builtin:') ? builtinFrames().find(x => x.id === id) : s.startsWith('bfont:') ? BUILTIN_FONTS.find(x => x.id === id) : libIndex.get(id); };
+  async function libLoad() {
+    if (libReady) return;
+    if (libLoading) return libLoading;
+    libLoading = (async () => {
+      const items = (await tx('readonly', st => st.getAll())) || [];
+      if (dead) return;
+      const merged = new Map(items.map(it => [it.id, it]));
+      lib.forEach(it => { if (!merged.has(it.id)) merged.set(it.id, it); });
+      lib = [...merged.values()].sort((a, b) => b.t - a.t); indexLibrary(); libReady = true;
+    })();
+    try { await libLoading; } finally { libLoading = null; }
+  }
+  async function loadActiveLibrary() {
+    const ids = new Set();
+    const collect = value => {
+      if (!value || typeof value !== 'object') return;
+      if (typeof value.id === 'string') ids.add(value.id);
+      Object.values(value).forEach(v => { if (v && typeof v === 'object') collect(v); });
+    };
+    collect(set);
+    for (const group of [set.avatar, set.themeCovers, set.fonts?.assignments])
+      Object.values(group || {}).forEach(id => { if (typeof id === 'string') ids.add(id); });
+    for (const fx of [set.bubbles, set.bgFx]) if (fx?.textureId) ids.add(fx.textureId);
+    const d = await db();
+    const items = await new Promise((resolve, reject) => {
+      const t = d.transaction('items', 'readonly'), st = t.objectStore('items'), out = [];
+      for (const id of ids) if (!id.startsWith('builtin:') && !id.startsWith('bfont:')) {
+        const r = st.get(id); r.onsuccess = () => { if (r.result) out.push(r.result); };
+      }
+      t.oncomplete = () => resolve(out); t.onerror = t.onabort = () => reject(t.error);
+    });
+    if (dead) return;
+    items.forEach(it => { if (!libIndex.has(it.id)) { lib.push(it); libIndex.set(it.id, it); } });
+  }
   async function libAdd(item) {
     item.id = item.id || (item.kind + '-' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
     item.t = Date.now();
-    await tx('readwrite', s => s.put(item)); lib.unshift(item); return item;
+    await tx('readwrite', s => s.put(item)); lib.unshift(item); libIndex.set(item.id, item); return item;
   }
   async function libDel(ids) {
     await tx('readwrite', s => ids.forEach(id => s.delete(id)));
     ids.forEach(id => { if (urls.has(id)) { host.URL.revokeObjectURL(urls.get(id)); urls.delete(id); } });
-    lib = lib.filter(x => !ids.includes(x.id));
+    lib = lib.filter(x => !ids.includes(x.id)); indexLibrary();
     for (const k of ['avatar', 'bg', 'frame']) for (const [key, v] of Object.entries(set[k])) {
       const id = typeof v === 'string' ? v : v?.id; if (ids.includes(id)) delete set[k][key];
     }
@@ -270,9 +305,24 @@ function startManager() {
   }
   function paintOne(avatar) { paintAvatarImg(avatar); paintInk(avatar); paintBg(avatar); paintFrame(avatar); }
   function paintAllAny(a) { paintOne(a); }
+  const paintQueue = new Set(); let paintFrameId = 0;
+  function flushAvatars() {
+    paintFrameId = 0;
+    if (dead) return;
+    let count = 0;
+    for (const avatar of paintQueue) {
+      paintQueue.delete(avatar);
+      if (avatar.isConnected) paintOne(avatar);
+      if (++count >= 32) break;
+    }
+    if (paintQueue.size) paintFrameId = host.requestAnimationFrame(flushAvatars);
+  }
   function paintAll() {
-    cache.clear(); paintGlobalBg(); paintBubbles(); paintText(); paintEntries();
-    doc.querySelectorAll('#chat .mes .avatar').forEach(a => { delete a.dataset.llInkSig; delete a.dataset.llBgSig; delete a.dataset.llOverSig; if (a.parentElement) { delete a.parentElement.dataset.llFrameSig; } }); doc.querySelectorAll('#chat .mes .avatar').forEach(a => { if (a.matches(avatarSelector)) paintOne(a); else paintAllAny(a); }); }
+    cache.clear(); paintBubbles(); paintText(); paintEntries();
+    const avatars = [...doc.querySelectorAll(avatarSelector)];
+    avatars.reverse().forEach(a => paintQueue.add(a));
+    if (!paintFrameId && !dead) paintFrameId = host.requestAnimationFrame(flushAvatars);
+  }
 
   function globalBaseColor() {
     const gb = effGlobalBg();
@@ -307,7 +357,9 @@ function startManager() {
     host.clearTimeout(bakeTimer);
     bakeTimer = host.setTimeout(async () => {
       try {
+        if (dead || sig !== bakeSig) return;
         const im = await loadImg(itemUrl(it));
+        if (dead || sig !== bakeSig) return;
         const k = Math.min(1, 2048 / Math.max(im.naturalWidth, im.naturalHeight));
         const w = Math.max(1, Math.round(im.naturalWidth * k)), h = Math.max(1, Math.round(im.naturalHeight * k));
         const c = doc.createElement('canvas'); c.width = w; c.height = h;
@@ -354,7 +406,7 @@ function startManager() {
         const sig = JSON.stringify([it.id, blur, bright, tint, host.innerWidth > host.innerHeight]);
         if (sig !== bakeSig) { bakeSig = sig; bakeBackground(it, blur, bright, tint ? tint.replace(/color-mix\(in srgb,(.+) (\d+)%,transparent\)/, (m, c, p) => colorAlpha(c, p / 100)) : '', sig); }
         if (bakeReadySig === sig && bakeUrl) image = cssUrl(bakeUrl);
-        else if (root.style.getPropertyValue('--ll-global-bg').includes('blob:') && bakeUrl) image = cssUrl(bakeUrl);
+
       } else bakeSig = '';
       setVar(root, '--ll-global-bg', image);
       setVar(root, '--ll-global-color', solid ? (shadeOf(bright) || tint ? solidWithFx(r.color, bright, tint) : r.color) : 'transparent');
@@ -430,19 +482,19 @@ function startManager() {
     const opacity=clamp(b.opacity,0,100,100), brightness=local && brightOn(b) ? clamp(b.brightness,20,180,100) : 100;
     const base=b.sameGlobal ? globalBaseColor() : validColor(b.color) ? b.color : 'var(--lb-paper,var(--ll-paper,var(--SmartThemeBlurTintColor,#ffffff)))';
     const fill=brightness<=100 ? `color-mix(in srgb,${base} ${brightness}%,#000)` : `color-mix(in srgb,${base} ${200-brightness}%,#fff)`;
-    root.style.setProperty('--ll-bubble-opacity',opacity+'%');
-    root.style.setProperty('--ll-bubble-blur',(local && blurOn(b) ? clamp(b.blur,0,40) : 0)+'px');
-    root.style.setProperty('--ll-bubble-brightness',brightness+'%');
-    root.style.setProperty('--ll-bubble-fill',fill);
-    root.style.setProperty('--ll-bubble-color',base);
+    setVar(root, '--ll-bubble-opacity',opacity+'%');
+    setVar(root, '--ll-bubble-blur',(local && blurOn(b) ? clamp(b.blur,0,40) : 0)+'px');
+    setVar(root, '--ll-bubble-brightness',brightness+'%');
+    setVar(root, '--ll-bubble-fill',fill);
+    setVar(root, '--ll-bubble-color',base);
     const texture=textureOf(b);
-    root.style.setProperty('--ll-bubble-paper',local && b.paper ? texture.image : 'none');
-    root.style.setProperty('--ll-paper-size',texture.size);
-    root.style.setProperty('--ll-paper-strength',local ? paperOpacity(b) : 0);
-    root.style.setProperty('--ll-paper-blend',texture.blend);
-    root.style.setProperty('--ll-glass-color',validColor(b.glassColor) ? b.glassColor : '#ffffff');
-    root.style.setProperty('--ll-glass-opacity',clamp(b.glassOpacity,0,100,35)+'%');
-    root.style.setProperty('--ll-glass-blur',clamp(b.glassBlur,0,40,12)+'px');
+    setVar(root, '--ll-bubble-paper',local && b.paper ? texture.image : 'none');
+    setVar(root, '--ll-paper-size',texture.size);
+    setVar(root, '--ll-paper-strength',local ? paperOpacity(b) : 0);
+    setVar(root, '--ll-paper-blend',texture.blend);
+    setVar(root, '--ll-glass-color',validColor(b.glassColor) ? b.glassColor : '#ffffff');
+    setVar(root, '--ll-glass-opacity',clamp(b.glassOpacity,0,100,35)+'%');
+    setVar(root, '--ll-glass-blur',clamp(b.glassBlur,0,40,12)+'px');
     paintGlobalBg();
   }
   function ensurePaper(mes) {
@@ -641,7 +693,8 @@ function startManager() {
     if (ex) { try { doc.querySelector(ex); } catch (_) { ex = ''; } }
     const not = ex ? ':not(:is(' + ex + '),:is(' + ex + ') *)' : '';
     let css = '';
-    for (const sheet of sourceSheets()) try { css += rewrittenRules(sheet.cssRules, p.colors || {}); } catch (_) {}
+    if (Object.values(p.colors || {}).some(validColor))
+      for (const sheet of sourceSheets()) try { css += rewrittenRules(sheet.cssRules, p.colors || {}); } catch (_) {}
     for (const [, variable] of nativeColors) if (validColor(p.variables?.[variable])) css += ':root:root{' + variable + ':' + p.variables[variable] + '!important;}';
     let anyText = false;
     if (p.textAllOn && validColor(p.textAll)) { anyText = true; css += '#chat .mes .mes_text,#chat .mes .mes_text *' + not + '{color:' + p.textAll + '!important;}'; }
@@ -951,8 +1004,7 @@ html:root body .ll-mgr .ll-paper-tile > i::after{opacity:.6}
       if (sig !== lastThemeSignature) { lastThemeSignature = sig; queueThemePaint(); }
       bindingTimer = host.setTimeout(poll, 1000);
     };
-    const chat = doc.querySelector('#chat');
-    if (chat) { themeObserver = new host.MutationObserver(records => { if (records.some(r => [...r.addedNodes].some(n => n.nodeType === 1))) queueThemePaint(); }); themeObserver.observe(chat, {childList:true,subtree:true}); }
+
     poll(); paintTheme();paintFonts();paintFontSize();doc.addEventListener('input',queueFonts);
   }
   function onChatTheme() { checkCharacterTheme(true); queueThemePaint(); }
@@ -1081,7 +1133,26 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
 `;
   doc.head.append(panelCss);
 
-  const loadImg = src => new Promise((res, rej) => { const im = new host.Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
+  const imageLoads = new Map();
+  const loadImg = src => {
+    if (imageLoads.has(src)) { const p = imageLoads.get(src); imageLoads.delete(src); imageLoads.set(src, p); return p; }
+    const promise = new Promise((res, rej) => { const im = new host.Image(); im.onload = () => res(im); im.onerror = rej; im.src = src; });
+    imageLoads.set(src, promise);
+    promise.catch(() => { if (imageLoads.get(src) === promise) imageLoads.delete(src); });
+    while (imageLoads.size > 4) imageLoads.delete(imageLoads.keys().next().value);
+    return promise;
+  };
+  const previewObserver = host.IntersectionObserver ? new host.IntersectionObserver(entries => {
+    for (const e of entries) if (e.isIntersecting) {
+      const it = byId(e.target.dataset.llPreviewId);
+      if (it) e.target.style.backgroundImage = cssUrl(itemUrl(it));
+      previewObserver.unobserve(e.target);
+    }
+  }, {rootMargin:'160px'}) : null;
+  function previewItem(el, it) {
+    if (!previewObserver) { el.style.backgroundImage = cssUrl(itemUrl(it)); return; }
+    el.dataset.llPreviewId = it.id; previewObserver.observe(el);
+  }
   const readFile = f => new Promise(res => { const r = new host.FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
   async function shrink(dataUrl, max, type) {
     const im = await loadImg(dataUrl), k = Math.min(1, max / Math.max(im.naturalWidth, im.naturalHeight));
@@ -1176,7 +1247,9 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
   }
 
   async function openManager(startAvatar, startTab) {
-    await libLoad();
+    try { await libLoad(); } catch (e) { host.toastr?.warning?.('素材库读取失败，请重试'); return; }
+    if (dead) return;
+    previewObserver?.disconnect();
     const previous = doc.querySelector('.ll-mgr'); previous?.llCleanupViewport?.(); previous?.remove();
     const list = chatAvatars();
     let key = startAvatar ? keyOf(startAvatar) : (list.find(a => a.current && !a.user)?.key || list[0]?.key || '');
@@ -1193,7 +1266,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
     who.onchange = () => { key = decodeURIComponent(who.value); render(tab); };
     let tab = startTab || set.lastTab || 'avatar';
     wrap.querySelectorAll('.ll-mgr-tabs button').forEach(b => b.onclick = () => { render(b.dataset.t); b.scrollIntoView({ block: 'nearest', inline: 'nearest' }); });
-    const closeManager = () => { wrap.llCleanupViewport?.(); if (wrap.open) wrap.close(); wrap.remove(); };
+    const closeManager = () => { previewObserver?.disconnect(); wrap.llCleanupViewport?.(); if (wrap.open) wrap.close(); wrap.remove(); };
     $('.close').onclick = closeManager;
     wrap.addEventListener('cancel', e => { e.preventDefault(); closeManager(); });
     wrap.addEventListener('click', e => { if (e.target === wrap) closeManager(); });
@@ -1237,13 +1310,14 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       lib.filter(x => x.kind === kind).forEach(it => {
         const d = doc.createElement('div'); if (kind === 'frame' || kind === 'icon') d.classList.add(kind);
         if (it.id === selectedId) d.classList.add('on');
-        if(it.kind==='font'||it.kind==='fontCss'){d.textContent=it.name;}else d.style.backgroundImage = cssUrl(itemUrl(it)); d.title = it.name || '';
+        if(it.kind==='font'||it.kind==='fontCss'){d.textContent=it.name;}else previewItem(d, it); d.title = it.name || '';
         d.dataset.id = it.id; d.onclick = () => onPick(it.id); g.append(d);
       });
       return g;
     };
     function render(t) {
       if ((t === 'frame' && !set.appearance.showFrame) || (t === 'color' && !set.appearance.showColor)) t = 'avatar';
+      previewObserver?.disconnect();
       tab = t; pane.textContent = '';
       if (set.lastTab !== t) { set.lastTab = t; saveSet(); }
       wrap.querySelectorAll('.ll-mgr-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
@@ -1798,7 +1872,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       toggleRow(box,'显示并启用头像框功能',a.showFrame,v=>{a.showFrame=v;save();});
       toggleRow(box,'显示并启用序列头像颜色功能',a.showColor,v=>{a.showColor=v;save();});
       pane.prepend(fold('管理器外观与可选功能',box));
-      pane.append(Object.assign(doc.createElement('div'),{className:'ll-note',textContent:'当前运行的版本：v1.7.0'}));
+      pane.append(Object.assign(doc.createElement('div'),{className:'ll-note',textContent:'当前运行的版本：v1.7.1'}));
     }
 
     function renderEntry() {
@@ -1845,7 +1919,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
         });
         items.forEach(it => {
           const d = doc.createElement('div'); if (kind === 'frame' || kind === 'icon') d.classList.add(kind);
-          if(it.kind==='font'||it.kind==='fontCss'){d.textContent=it.name;}else d.style.backgroundImage = cssUrl(itemUrl(it)); d.title = it.name || '';
+          if(it.kind==='font'||it.kind==='fontCss'){d.textContent=it.name;}else previewItem(d, it); d.title = it.name || '';
           const x = doc.createElement('b'); x.textContent = '×';
           x.onclick = async e => { e.stopPropagation(); if (host.confirm('删除这张' + names[kind] + '？')) { await libDel([it.id]); render('lib'); } };
           d.append(x); g.append(d);
@@ -1918,7 +1992,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
     content.append(button); drawer.append(header, content);
     section.append(drawer); container.append(section);
   }
-  libLoad().then(() => dead ? undefined : migrate()).then(() => { if (!dead) {paintAll();paintFonts();} }).catch(() => {});
+  loadActiveLibrary().then(() => dead ? undefined : migrate()).then(() => { if (!dead) {paintAll();paintFonts();} }).catch(() => {});
 
   const uiSelector = '.ll-ink-toggle,.ll-avatar-entry,.ll-mgr,.ll-frame-over';
   const dirty = new Set(); let full = true;
@@ -1933,10 +2007,12 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
   function scan() {
     timer = 0; if (dead) return;
     cache.clear();
-    menuEntry(); settingsEntry(); paintGlobalBg(); paintBubbles(); paintText();
-    if (full) { full = false; dirty.clear(); doc.querySelectorAll('#chat > .mes').forEach(scanMes); return; }
-    const list = [...dirty]; dirty.clear();
-    list.forEach(scanMes);
+    menuEntry(); settingsEntry();
+    if (full) { paintBubbles(); paintText(); }
+    if (full) { full = false; dirty.clear(); [...doc.querySelectorAll('#chat > .mes')].reverse().forEach(mes => dirty.add(mes)); }
+    let count = 0;
+    for (const mes of dirty) { dirty.delete(mes); scanMes(mes); if (++count >= 32) break; }
+    if (dirty.size) schedule(16);
   }
   const schedule = (wait = 150) => { if (!timer && !dead) timer = host.setTimeout(scan, wait); };
   const scheduleFull = () => { full = true; schedule(); };
@@ -1970,6 +2046,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
   function dispose() {
     if (dead) return;
     dead = true; stopThemes(); host.clearTimeout(timer); observer.disconnect();
+    host.cancelAnimationFrame(paintFrameId); paintQueue.clear(); dirty.clear();
     host.removeEventListener('pagehide', onPageHide);
     doc.getElementById('lili-avatar-extension-settings')?.remove();
     doc.removeEventListener('load', loaded, true); host.removeEventListener('resize', scheduleFull);
@@ -1985,6 +2062,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       ['--ll-av-ink', '--ll-av-shine', '--ll-av-glow'].forEach(p => a.style.removeProperty(p));
       const img = a.querySelector('img'); if (img?.dataset.llOrig) { img.setAttribute('src', img.dataset.llOrig); delete img.dataset.llOrig; delete img.dataset.llSet; }
     });
+    previewObserver?.disconnect(); imageLoads.clear();
     urls.forEach(u => host.URL.revokeObjectURL(u)); panelCss.remove();
     root.classList.remove('ll-custom-global-bg', 'll-custom-bubbles', 'll-custom-text-color', 'll-custom-text-glow','ll-global-effects','ll-bubbles-global','ll-bubble-glass','ll-bubble-fill','ll-bubble-paper'); ['--ll-global-bg','--ll-global-bg-size','--ll-global-bg-pos','--ll-global-color','--ll-paper-strength','--ll-paper-size','--ll-bubble-opacity','--ll-bubble-blur','--ll-bubble-color','--ll-bubble-fill','--ll-bubble-brightness','--ll-bubble-paper','--ll-text-color','--ll-text-glow-color','--ll-text-glow-size'].forEach(p => root.style.removeProperty(p));
     dropStage(); host.clearTimeout(bakeTimer); if (bakeUrl) host.URL.revokeObjectURL(bakeUrl);

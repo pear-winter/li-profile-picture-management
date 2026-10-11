@@ -19,7 +19,7 @@ const fixture=`<!doctype html><html><head><meta charset="utf-8"><meta name="view
  await page.goto('http://127.0.0.1:'+server.address().port);await page.waitForFunction(()=>window.__liliSequenceAvatarV7?.extension);await page.evaluate(()=>window.__liliSequenceAvatarV7.open());await page.locator('.ll-mgr[open]').waitFor();
  assert.equal(await page.locator('.ll-mgr-tabs button').first().textContent(),'头像');assert.equal(await page.locator('.ll-mgr-tabs button').last().textContent(),'设置');
  assert.equal(await page.locator('[data-t="frame"]').isVisible(),false);assert.equal(await page.locator('[data-t="color"]').isVisible(),false);
- await page.locator('[data-t="entry"]').click();assert(await page.locator('.pane').textContent().then(t=>t.includes('v1.7.0')));
+ await page.locator('[data-t="entry"]').click();assert(await page.locator('.pane').textContent().then(t=>t.includes('v1.7.1')));
  await page.locator('[data-t="themes"]').click();assert.equal(await page.locator('.ll-theme-card').count(),2);
  await page.locator('.ll-theme-card').nth(1).getByRole('button',{name:'绑定当前角色',exact:true}).click();assert.equal(await page.locator('#themes').inputValue(),'B · 序列');
  await page.evaluate(()=>{ctx.characterId=1;emit('chat');});await page.locator('#themes').selectOption('A · 蝴蝶');await page.evaluate(()=>{ctx.characterId=0;emit('chat');});await page.waitForFunction(()=>document.querySelector('#themes').value==='B · 序列');
@@ -34,6 +34,6 @@ const fixture=`<!doctype html><html><head><meta charset="utf-8"><meta name="view
  await page.reload();await page.waitForFunction(()=>window.__liliSequenceAvatarV7?.extension);await page.evaluate(()=>window.__liliSequenceAvatarV7.open());await page.locator('[data-t="fonts"]').click();assert.equal(await page.getByRole('slider',{name:'字体大小',exact:true}).inputValue(),'150');assert.equal(await page.getByRole('textbox',{name:'正文颜色代码',exact:true}).inputValue(),'#224466');
  await page.setViewportSize({width:1100,height:900});await page.locator('[data-t="bubbles"]').click();await page.getByRole('slider',{name:'显示宽度',exact:true}).fill('100');await page.getByRole('slider',{name:'显示宽度',exact:true}).dispatchEvent('change');const desktop=await page.locator('.mes').evaluate(n=>n.getBoundingClientRect().width);assert(desktop>=1099);
  await page.evaluate(()=>window.__liliSequenceAvatarV7.dispose());assert.equal(await page.locator('.ll-mgr').count(),0);assert.equal(await page.locator('#ll-font-size').count(),0);assert.equal(await page.locator('#ll-theme-overrides').count(),0);assert.deepEqual(errors,[]);
- console.log('PASS: v1.7.0 UI, binding, picker, deferred font size and global width, mobile/desktop centering, persistence and disposal.');
+ console.log('PASS: v1.7.1 UI, binding, picker, deferred font size and global width, mobile/desktop centering, persistence and disposal.');
  }finally{await browser?.close();server.close();}
 })().catch(e=>{console.error(e);process.exitCode=1});
