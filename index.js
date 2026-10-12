@@ -252,11 +252,19 @@ function startManager() {
     if (it) {
       const u = itemUrl(it);
       if (!img.dataset.llOrig) img.dataset.llOrig = cur;
-      if (cur !== u) { img.dataset.llSet = u; img.setAttribute('src', u); }
+      img.dataset.llSet = u;
+      if (cur !== u) img.setAttribute('src', u);
     } else if (img.dataset.llOrig) {
       const o = img.dataset.llOrig; delete img.dataset.llOrig; delete img.dataset.llSet;
       if (cur !== o) img.setAttribute('src', o);
     }
+  }
+  function resetAvatar(key) {
+    delete set.avatar[key];
+    saveSet();
+    doc.querySelectorAll(avatarSelector).forEach(avatar => {
+      if (keyOf(avatar) === key) paintAvatarImg(avatar);
+    });
   }
   function paintBg(avatar) {
     const key = keyOf(avatar), r = set.bg[key] || set.bg['*'], it = r && byId(r.id);
@@ -1329,6 +1337,10 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
     }
 
     function renderAvatar(a) {
+      const resetRow = doc.createElement('div'); resetRow.className = 'll-row';
+      const reset = Object.assign(doc.createElement('button'), { type: 'button', className: 'reset', textContent: '恢复原头像' });
+      reset.onclick = () => { resetAvatar(key); render('avatar'); };
+      resetRow.append(reset); pane.append(resetRow);
       pane.append(Object.assign(doc.createElement('div'), { className: 'll-tip', textContent: '换头像在任何美化里都有效（只改显示，不改角色卡）。裁剪框是长方形，中间的圆是圆形头像美化会显示的部分。' }));
       pane.append(fold('本地库里的头像', libGrid('avatar', set.avatar[key], id => { set.avatar[key] = id; saveSet(); paintAll(); render('avatar'); })));
       pane.append(Object.assign(doc.createElement('div'), { className: 'll-sec', textContent: '新头像' }));
@@ -1367,8 +1379,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       const zr = doc.createElement('div'); zr.className = 'll-row'; zr.append('缩放 ', zoom); pane.append(zr);
       pane.append(Object.assign(doc.createElement('div'), { className: 'll-tip', textContent: '拖动调整位置；圆圈里的部分会出现在圆形头像里。' }));
       const btns = doc.createElement('div'); btns.className = 'll-row'; btns.style.justifyContent = 'flex-end';
-      btns.innerHTML = '<button type="button" class="reset">恢复原头像</button><button type="button" class="pri save">保存并使用</button>';
-      btns.querySelector('.reset').onclick = () => { delete set.avatar[key]; saveSet(); paintAll(); render('avatar'); };
+      btns.innerHTML = '<button type="button" class="pri save">保存并使用</button>';
       btns.querySelector('.save').onclick = async () => {
         if (!st.src) return;
         const A = RATIO[mode]; let item;
@@ -1872,7 +1883,7 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
       toggleRow(box,'显示并启用头像框功能',a.showFrame,v=>{a.showFrame=v;save();});
       toggleRow(box,'显示并启用序列头像颜色功能',a.showColor,v=>{a.showColor=v;save();});
       pane.prepend(fold('管理器外观与可选功能',box));
-      pane.append(Object.assign(doc.createElement('div'),{className:'ll-note',textContent:'当前运行的版本：v1.7.1'}));
+      pane.append(Object.assign(doc.createElement('div'),{className:'ll-note',textContent:'当前运行的版本：v1.7.2'}));
     }
 
     function renderEntry() {
@@ -2076,3 +2087,4 @@ html:root body .ll-mgr[data-ll-compact="true"] .ll-mgr-tabs button{padding:4px 9
 }
 
 init();
+

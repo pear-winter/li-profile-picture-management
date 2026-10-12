@@ -45,11 +45,12 @@ test('install package preserves script storage keys and has no helper dependency
     assert.deepEqual(manifest.requires,[]);assert.ok(source.includes("'lili-avatar-set'"));assert.ok(source.includes("'lili-avatar-lib'"));
     assert.ok(!source.includes('getCurrentScriptId'));assert.equal(manifest.js,'index.js');
 });
-test('v1.7.1 extension and shipped script stay in sync',()=>{
-    const script=JSON.parse(readFileSync(new URL('../scripts/酒馆助手脚本-梨梨头像背景管理器-v1.7.1.json',import.meta.url),'utf8'));
+test('v1.7.2 extension and shipped script stay in sync',()=>{
+    const script=JSON.parse(readFileSync(new URL('../scripts/酒馆助手脚本-梨梨头像背景管理器-v1.7.2.json',import.meta.url),'utf8'));
     const manifest=JSON.parse(readFileSync(new URL('../manifest.json',import.meta.url),'utf8'));
     const pkg=JSON.parse(readFileSync(new URL('../package.json',import.meta.url),'utf8'));
-    assert.equal(manifest.version,'1.7.1');assert.equal(pkg.version,manifest.version);assert.ok(script.name.endsWith('v'+manifest.version));
+    assert.equal(manifest.version,'1.7.2');assert.equal(pkg.version,manifest.version);assert.ok(script.name.endsWith('v'+manifest.version));
     const body=script.content.slice(script.content.indexOf('function startManager() {'),script.content.lastIndexOf('\n      startManager();')).trim().replace('script: true','extension: true');
     assert.equal(source.slice(source.indexOf('function startManager() {'),source.lastIndexOf('\ninit();')).trim(),body);
 });
+

@@ -1,10 +1,10 @@
 {
   "name": "lili-profile-picture-management",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --test tests/lifecycle.test.mjs && node tests/features.cjs && node tests/viewport.cjs && node tests/performance.cjs",
+    "test": "node --test tests/lifecycle.test.mjs && node tests/features.cjs && node tests/viewport.cjs && node tests/performance.cjs && node tests/avatar-reset.cjs",
     "test:browser": "node tests/themes-browser.cjs"
   }
 }
